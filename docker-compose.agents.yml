@@ -1,0 +1,42 @@
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: postgres-agents
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    command: postgres -c config_file=/etc/postgresql/postgresql.conf
+    volumes:
+      - ./postgres/conf/postgresql.conf:/etc/postgresql/postgresql.conf:ro
+      - ./postgres/init:/docker-entrypoint-initdb.d:ro
+      - postgres-agents-data:/var/lib/postgresql/data
+    networks:
+      - leyvascents-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  browserless:
+    image: ghcr.io/browserless/chromium:latest
+    container_name: browserless
+    restart: unless-stopped
+    environment:
+      TOKEN: ${BROWSERLESS_TOKEN}
+      CONCURRENT: "3"
+      TIMEOUT: "30000"
+      PROXY_SERVER: ${PROXY_SERVER}
+    networks:
+      - leyvascents-net
+
+volumes:
+  postgres-agents-data:
+    driver: local
+
+networks:
+  leyvascents-net:
+    external: true

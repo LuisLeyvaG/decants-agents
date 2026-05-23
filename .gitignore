@@ -1,0 +1,23 @@
+# Secrets — el .env se genera en la VM, nunca en laptop
+.env
+.env.local
+*.env.local
+
+# Logs
+*.log
+logs/
+
+# Postgres data — defensive: si alguien bind-monta a path relativo por
+# accidente (la fuente de verdad es el named volume gestionado por Docker).
+postgres/data/
+
+# Editores / OS
+.DS_Store
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+
+# Node (por si alguna tool auxiliar añade scripts)
+node_modules/
