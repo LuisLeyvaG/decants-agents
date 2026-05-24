@@ -54,7 +54,7 @@ bash scripts/down.sh       # detiene preservando volumes
 ## docker compose vía wrapper
 
 La VM corre Container-Optimized OS y no tiene `docker compose` instalado.
-`scripts/compose-wrap.sh` ejecuta `docker/compose:2` desde un container
+`scripts/compose-wrap.sh` ejecuta `linuxserver/docker-compose:latest` desde un container
 desechable, montando el socket de Docker. Todos los `up.sh` / `down.sh` /
 `healthcheck.sh` usan este wrapper internamente.
 

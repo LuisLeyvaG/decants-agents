@@ -1,9 +1,23 @@
 # TODO
 
+## Pre-requisitos de IAM (BLOQUEANTE para setup.sh)
+
+- [ ] En `decants-infrastructure` (Terraform), elevar los permisos del
+      SA de la VM `leyvascents-n8n` (probablemente `leyvascents-n8n-sa`)
+      en el proyecto `leyva-scents`. En Fase 1 le dimos solo
+      `roles/secretmanager.secretAccessor` (lectura). `setup.sh` necesita
+      **crear** 3 secretos nuevos, lo cual requiere uno de:
+      - `roles/secretmanager.admin` (más simple, scope = proyecto), o
+      - permisos granulares: `secretmanager.secrets.create`,
+        `secretmanager.versions.add`, además de los de lectura ya
+        existentes.
+      Sin esto, `setup.sh` aborta en el dry-test que hace contra la API.
+
 ## Inmediato (post-deploy inicial)
 
 - [ ] Correr `setup.sh` en la VM y verificar que los 3 secretos nuevos
-      aparecen en Secret Manager (`gcloud secrets list --project=leyva-scents`).
+      aparecen en Secret Manager (desde la laptop:
+      `gcloud secrets list --project=leyva-scents | grep -E 'postgres-agents-password|browserless-token|n8n-webhook-secret'`).
 - [ ] `up.sh` + `healthcheck.sh` retornan 0.
 - [ ] Verificar que `psql` desde un container efímero en `leyvascents-net`
       conecta a `postgres-agents:5432` con las creds del Secret Manager.

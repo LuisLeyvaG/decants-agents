@@ -3,7 +3,9 @@
 #
 # Detecta SO y elige transport:
 #   * Linux/macOS con rsync → rsync sobre `gcloud compute ssh` (incremental).
-#   * Cualquier otro caso (incluido Windows/Git-Bash) → gcloud compute scp --recurse.
+#   * Cualquier otro caso (incluido Windows/Git-Bash) → tarball local + scp
+#     de un solo archivo + extract remoto via SSH. Evita los bugs de pscp
+#     con múltiples archivos y el de stdin-forwarding sobre el túnel IAP.
 #
 # NO sube .env (cada VM tiene el suyo, generado por setup.sh).
 # NO sube .git ni node_modules ni logs.
@@ -13,8 +15,6 @@ set -euo pipefail
 readonly GCP_PROJECT="leyva-scents"
 readonly VM_NAME="leyvascents-n8n"
 readonly VM_ZONE="us-central1-a"
-readonly VM_USER="${USER:-$(whoami)}"
-readonly VM_DEST_DIR="/home/${VM_USER}/agents"
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
@@ -31,10 +31,34 @@ require_cmd() {
 
 require_cmd gcloud
 
+# Detección de usuario remoto.
+# El username en la VM no necesariamente coincide con $USER local: gcloud
+# OS Login deriva el nombre del email (ej. leyva_garcia_luis_gerardo_gmail_).
+# Si confiásemos en $USER local, el path /home/<user>/agents apuntaría
+# al directorio equivocado (o inexistente) en la VM.
+log_info "Detectando usuario remoto en la VM…"
+REMOTE_USER="$(gcloud compute ssh "${VM_NAME}" \
+    --project="${GCP_PROJECT}" \
+    --zone="${VM_ZONE}" \
+    --tunnel-through-iap \
+    --command='whoami' 2>/dev/null | tr -d '\r\n')"
+
+if [[ -z "${REMOTE_USER}" ]]; then
+    log_error "No se pudo detectar el usuario remoto en la VM."
+    log_error "Verifica acceso SSH con:"
+    log_error "  gcloud compute ssh ${VM_NAME} --project=${GCP_PROJECT} --zone=${VM_ZONE} --tunnel-through-iap"
+    exit 1
+fi
+
+log_info "Usuario remoto: ${REMOTE_USER}"
+readonly REMOTE_USER
+readonly VM_DEST_DIR="/home/${REMOTE_USER}/agents"
+
 log_info "Asegurando directorio destino en VM: ${VM_DEST_DIR}"
 gcloud compute ssh "${VM_NAME}" \
     --project="${GCP_PROJECT}" \
     --zone="${VM_ZONE}" \
+    --tunnel-through-iap \
     --command="mkdir -p '${VM_DEST_DIR}'" \
     >/dev/null
 
@@ -59,33 +83,48 @@ if [[ ${use_rsync} -eq 1 ]]; then
         "${REPO_ROOT}/" \
         ":${VM_DEST_DIR}/"
 else
-    log_info "Transport: gcloud compute scp --recurse (sin incremental)"
-    log_warn "rsync no disponible — todos los archivos se re-suben en cada deploy."
+    log_info "Transport: tarball + scp single-file"
+    log_info "Razón: stdin streaming no funciona bien en Git Bash sobre Windows."
 
-    # Lista lo que se sube, para que el usuario vea qué entra. Excluye
-    # explícitamente .env / .git etc. usando un staging temporal.
-    staging="$(mktemp -d)"
-    trap 'rm -rf "${staging}"' EXIT
+    TAR_EXCLUDES=(
+        --exclude='.git'
+        --exclude='.env'
+        --exclude='.env.local'
+        --exclude='node_modules'
+        --exclude='*.log'
+        --exclude='.DS_Store'
+    )
 
-    log_info "Preparando staging en ${staging}…"
+    # Tarball local con nombre único
+    LOCAL_TAR="$(mktemp -u --suffix=.tar 2>/dev/null || true)"
+    # Si mktemp -u no soporta --suffix en Git Bash, fallback:
+    if [[ -z "${LOCAL_TAR}" || "${LOCAL_TAR}" == "-u" ]]; then
+        LOCAL_TAR="/tmp/decants-agents-deploy-$$.tar"
+    fi
+    REMOTE_TAR="/tmp/decants-agents-deploy-$$.tar"
 
-    # Copia respetando exclusiones. Usamos tar para no depender de rsync.
-    tar -cf - \
-        --exclude='.git' \
-        --exclude='.env' \
-        --exclude='.env.local' \
-        --exclude='node_modules' \
-        --exclude='*.log' \
-        --exclude='.DS_Store' \
-        -C "${REPO_ROOT}" . \
-        | tar -xf - -C "${staging}"
+    trap 'rm -f "${LOCAL_TAR}"' EXIT
 
+    log_info "Creando tarball local: ${LOCAL_TAR}"
+    tar -cf "${LOCAL_TAR}" "${TAR_EXCLUDES[@]}" -C "${REPO_ROOT}" .
+    log_info "Tamaño del tarball: $(du -h "${LOCAL_TAR}" | cut -f1)"
+
+    log_info "Subiendo tarball a ${VM_NAME}:${REMOTE_TAR}…"
     gcloud compute scp \
         --project="${GCP_PROJECT}" \
         --zone="${VM_ZONE}" \
-        --recurse \
-        "${staging}/." \
-        "${VM_NAME}:${VM_DEST_DIR}/"
+        --tunnel-through-iap \
+        "${LOCAL_TAR}" \
+        "${VM_NAME}:${REMOTE_TAR}"
+
+    log_info "Extrayendo en VM y limpiando tarball remoto…"
+    gcloud compute ssh "${VM_NAME}" \
+        --project="${GCP_PROJECT}" \
+        --zone="${VM_ZONE}" \
+        --tunnel-through-iap \
+        --command="cd '${VM_DEST_DIR}' && tar -xf '${REMOTE_TAR}' && rm -f '${REMOTE_TAR}' && echo '[remote] extract OK'"
+
+    log_info "Tarball deploy completo."
 fi
 
 log_info "Deploy completo."

@@ -1,11 +1,15 @@
 #!/usr/bin/env bash
-# compose-wrap.sh — invoca docker/compose:2 desde un container desechable.
+# compose-wrap.sh — invoca docker compose desde un container desechable.
 #
 # La VM corre Container-Optimized OS sin `docker compose` instalado. Este
 # wrapper expone la CLI de compose montando el socket del daemon. El
 # container de compose NO se mete en ninguna network: solo pasa órdenes
 # al daemon, que orquesta postgres y browserless a leyvascents-net según
 # el yml.
+#
+# Imagen: linuxserver/docker-compose:latest. La oficial docker/compose:2
+# fue descontinuada cuando compose se integró al CLI nativo de Docker;
+# linuxserver mantiene esta como reemplazo con la misma interfaz CLI.
 #
 # Uso:
 #   bash scripts/compose-wrap.sh up -d --build
@@ -36,6 +40,6 @@ exec docker run --rm \
     -v "${ENV_FILE}":"${ENV_FILE}":ro \
     -w "${REPO_ROOT}" \
     --env-file "${ENV_FILE}" \
-    docker/compose:2 \
+    linuxserver/docker-compose:latest \
     -f "${COMPOSE_FILE}" \
     "$@"
