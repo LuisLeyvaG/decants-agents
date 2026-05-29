@@ -1,0 +1,757 @@
+{
+  "name": "agent-1-trend-analyst-v1",
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": true
+  },
+  "description": "Trend Analyst v1 — Mexican HNW fragrance signals daily at 08:00 UTC (02:00 CDMX) via OpenAI Responses+web_search; validates canonical taxonomy, persists known signals + unknown candidates, updates run_logs.",
+  "connections": {
+    "Generate runId": {
+      "main": [
+        [
+          {
+            "node": "Insert run_logs started",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert run_logs started": {
+      "main": [
+        [
+          {
+            "node": "Build OpenAI Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build OpenAI Request": {
+      "main": [
+        [
+          {
+            "node": "OpenAI Responses",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Responses": {
+      "main": [
+        [
+          {
+            "node": "Validate and Filter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate and Filter": {
+      "main": [
+        [
+          {
+            "node": "IF status ok",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF status ok": {
+      "main": [
+        [
+          {
+            "node": "Split known signals",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Update run_logs failed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split known signals": {
+      "main": [
+        [
+          {
+            "node": "Format signal row",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format signal row": {
+      "main": [
+        [
+          {
+            "node": "Insert trend_signals",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert trend_signals": {
+      "main": [
+        [
+          {
+            "node": "Merge persistence",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Extract unknowns",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge persistence": {
+      "main": [
+        [
+          {
+            "node": "Update run_logs succeeded",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract unknowns": {
+      "main": [
+        [
+          {
+            "node": "Format unknown row",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format unknown row": {
+      "main": [
+        [
+          {
+            "node": "Upsert unknown_brand_candidates",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upsert unknown_brand_candidates": {
+      "main": [
+        [
+          {
+            "node": "Merge persistence",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Cron Daily 02:00 CDMX": {
+      "main": [
+        [
+          {
+            "node": "Generate runId",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 8 * * *"
+            }
+          ]
+        }
+      },
+      "id": "dd66256f-a058-40b4-a619-a97d80416596",
+      "name": "Cron Daily 02:00 CDMX",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        0,
+        96
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const ENCODING = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';\nconst ENCODING_LEN = 32;\nconst TIME_LEN = 10;\nconst RANDOM_LEN = 16;\nconst TIME_MAX = 281474976710655;\n\nfunction encodeTime(now, len) {\n  if (now > TIME_MAX) {\n    throw new Error('cannot encode time: too large');\n  }\n  let mod;\n  let str = '';\n  for (let i = len; i > 0; i--) {\n    mod = now % ENCODING_LEN;\n    str = ENCODING.charAt(mod) + str;\n    now = (now - mod) / ENCODING_LEN;\n  }\n  return str;\n}\n\nfunction encodeRandom(len) {\n  let str = '';\n  for (let i = 0; i < len; i++) {\n    str += ENCODING.charAt(Math.floor(Math.random() * ENCODING_LEN));\n  }\n  return str;\n}\n\nfunction ulid() {\n  return encodeTime(Date.now(), TIME_LEN) + encodeRandom(RANDOM_LEN);\n}\n\nconst runId = ulid();\nconst startedAt = new Date().toISOString();\n\nreturn [\n  {\n    json: {\n      runId,\n      startedAt,\n      agentName: 'trend_analyst',\n      workflowVersion: 'v1',\n    },\n  },\n];"
+      },
+      "id": "d1c8edfc-8cb6-4a12-86e6-60d905596a59",
+      "name": "Generate runId",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        224,
+        96
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO agent.run_logs (\n  id,\n  run_id,\n  agent,\n  status,\n  started_at,\n  metadata\n) VALUES (\n  $1,\n  $1,\n  $2,\n  'started',\n  $3::timestamptz,\n  $4::jsonb\n);",
+        "options": {
+          "queryReplacement": "={{ $json.runId }},{{ $json.agentName }},{{ $json.startedAt }},{{ JSON.stringify({ workflowVersion: $('Generate runId').item.json.workflowVersion, model: 'gpt-5.4', reasoningEffort: 'low' }) }}"
+        }
+      },
+      "id": "b11ad5d3-424f-4db8-9e5d-0f5edad9f066",
+      "name": "Insert run_logs started",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        448,
+        96
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Build OpenAI Responses API request body.\n//\n// Execution mode: Run Once for All Items (this node runs once with all\n// upstream items; we expect exactly 1 item from `Insert run_logs started`).\n//\n// System prompt is base64-encoded to avoid escaping issues with unicode\n// characters, emojis, and backticks (the prompt contains few-shot example\n// JSON blocks with triple-backtick fences that would break a JS template\n// literal).\n\nconst runMetadata = $('Generate runId').first().json;\nconst runId = runMetadata.runId;\nconst startedAt = runMetadata.startedAt;\n\nconst SYSTEM_PROMPT_B64 = 'IyBZb3UgYXJlIHRoZSBUcmVuZCBBbmFseXN0IGZvciBMZXl2YSBTY2VudHMuCgojIyDCpzEuIFlvdXIgcm9sZSBhbmQgb3BlcmF0aW5nIGNvbnRleHQKCkxleXZhIFNjZW50cyBpcyBhbiBlLWNvbW1lcmNlIG9mIHByZW1pdW0tcGVyZnVtZSBkZWNhbnRzIGJhc2VkIGluIENETVguIFRoZSB0YXJnZXQgY3VzdG9tZXIgaXMgdGhlIE1leGljYW4gaGlnaC1uZXQtd29ydGggKEhOVykgYnV5ZXIsIGNvbmNlbnRyYXRlZCBpbiBDRE1YLCBNb250ZXJyZXksIEd1YWRhbGFqYXJhLCBhbmQgUXVlcsOpdGFyby4gVGhlIGJyYW5kIGlkZW50aXR5IGlzICoqcXVpZXQgbHV4dXJ5Kiog4oCUIGRpc2NyZWV0LCBkYXJrLCBtaW5pbWFsaXN0OyBvcHVsZW5jZSBpcyBvZmYtYnJhbmQuIFlvdXIgam9iOiBldmVyeSA2IGhvdXJzLCBzdXJmYWNlIGEgc3RydWN0dXJlZCBsaXN0IG9mIGZyYWdyYW5jZSBkZW1hbmQgc2lnbmFscyBmcm9tIHRoZSAyMDI2IE1leGljYW4gbWFya2V0IGZvciB0aGUgaW52ZW50b3J5IGF1dG9tYXRpb24gc3lzdGVtLiBEb3duc3RyZWFtLCB5b3VyIG91dHB1dCBpcyB2YWxpZGF0ZWQgYnkgYSBab2Qgc2NoZW1hIChzdHJpY3QpLCBmaWx0ZXJlZCBzZW1hbnRpY2FsbHkgKG9ubHkgYGRlbWFuZF9zY29yZSA+PSA2MCBBTkQgY29uZmlkZW5jZSA+PSAwLjdgIHN1cnZpdmUpLCB0aGVuIHVwc2VydGVkIHRvIGEgUG9zdGdyZXMgdGFibGUgdGhhdCBkcml2ZXMgY2F0YWxvZyBkZWNpc2lvbnMuIFlvdSBhcmUgbm90IHdyaXRpbmcgZm9yIGh1bWFucyDigJQgeW91IGFyZSB3cml0aW5nIHN0cnVjdHVyZWQgSlNPTiBjb25zdW1lZCBieSBjb2RlLiBCZSBwcmVjaXNlLCBiZSBldmlkZW5jZS1ib3VuZCwgYmUgaG9uZXN0IGFib3V0IGNvbmZpZGVuY2UuCgojIyDCpzIuIFRoZSBvdXRwdXQgY29udHJhY3QgKGNpdGUgdGhlIHNjaGVtYSkKCiMjIyDCpzIuMSBSb290IHNoYXBlCgpZb3VyIHJlc3BvbnNlIE1VU1QgYmUgYSBzaW5nbGUgSlNPTiBvYmplY3Qgb2Ygc2hhcGUgYHsgInNpZ25hbHMiOiBbLi4uXSB9YC4gVGhlIGBzaWduYWxzYCBhcnJheSBNQVkgYmUgZW1wdHkgKGEgbGVnaXRpbWF0ZSAibm90aGluZyB0cmVuZGluZyByaWdodCBub3ciIG91dGNvbWUpIGFuZCBNVVNUIE5PVCBjb250YWluIG1vcmUgdGhhbiAqKjMwIGl0ZW1zKiogKGBUUkVORF9TSUdOQUxTX01BWF9QRVJfUlVOYCkuCgojIyMgwqcyLjIgRWFjaCBzaWduYWwg4oCUIHJlcXVpcmVkIGZpZWxkcwoKfCBGaWVsZCB8IFR5cGUgfCBDb25zdHJhaW50IHwgUHVycG9zZSB8CnwtLS18LS0tfC0tLXwtLS18CnwgYGJyYW5kYCB8IHN0cmluZyB8IHRyaW1tZWQsIDEtODAgY2hhcnMsIG5vIGFiYnJldmlhdGlvbnMgfCBCcmFuZCAvIHBlcmZ1bWUgaG91c2UgbmFtZSB8CnwgYGJyYW5kX2xpbmVgIHwgc3RyaW5nIFx8IG51bGwgfCB0cmltbWVkLCAxLTgwIGNoYXJzLCAqKmtleSBNVVNUIGJlIHByZXNlbnQqKiBldmVuIGlmIG51bGwgfCBQcmVtaXVtIGxpbmUgd2l0aGluIHRoZSBicmFuZDsgbnVsbCBmb3IgbWFpbmxpbmUgfAp8IGBmcmFncmFuY2VfbmFtZWAgfCBzdHJpbmcgfCB0cmltbWVkLCAxLTEyMCBjaGFycywgaW5jbHVkZSBjb25jZW50cmF0aW9uIHN1ZmZpeCB8IENvbW1lcmNpYWwgZnJhZ3JhbmNlIG5hbWUgfAp8IGBkZW1hbmRfc2NvcmVgIHwgaW50ZWdlciB8IDAtMTAwIHwgUmVsYXRpdmUgZGVtYW5kIGFtb25nIE1leGljYW4gSE5XIHwKfCBgdmVsb2NpdHlfN2RgIHwgbnVtYmVyIHwgLTEwMCB0byAxMDAsIGZpbml0ZSB8ICUgY2hhbmdlIGluIGludGVyZXN0IGxhc3QgNyBkYXlzOyBuZWdhdGl2ZSA9IGRlY2xpbmluZyB8CnwgYHNlbnRpbWVudGAgfCBlbnVtIHwgYCJwb3NpdGl2ZSJgIFx8IGAibWl4ZWQiYCBcfCBgImh5cGVfb25seSJgIHwgQWdncmVnYXRlIGNvbW11bml0eSBzZW50aW1lbnQgfAp8IGBzb3VyY2VzYCB8IHN0cmluZ1tdIHwgMS0xMCBpdGVtcywgZWFjaCAxLTIwMCBjaGFycyB8IEZyZWUtdGV4dCBzb3VyY2UgaWRlbnRpZmllcnMgKE5PVCBVUkxzKSB8CnwgYGV2aWRlbmNlX3F1b3Rlc2AgfCBzdHJpbmdbXSB8IDEtMTAgaXRlbXMsIGVhY2ggMS01MDAgY2hhcnMgfCBWZXJiYXRpbSBxdW90ZXMgLyBzaG9ydCBwYXJhcGhyYXNlcyBpbiBzb3VyY2UgbGFuZ3VhZ2UgfAp8IGByZWFzb25pbmdfc3VtbWFyeWAgfCBzdHJpbmcgfCA1MC00MDAgY2hhcnMgfCBZb3VyIGFuYWx5dGljYWwgc3ludGhlc2lzIChub3QgYSBxdW90ZSkgfAp8IGBjb25maWRlbmNlYCB8IG51bWJlciB8IDAtMSwgZmluaXRlIHwgWW91ciBob25lc3Qgc2VsZi1hc3Nlc3NtZW50IHwKCiMjIyDCpzIuMyBDcml0aWNhbCBmaWVsZCBjbGFyaWZpY2F0aW9ucwoKMS4gKipgYnJhbmRfbGluZWAgaXMgTk9UIG9wdGlvbmFsLioqIEFsd2F5cyBpbmNsdWRlIHRoZSBrZXkuIFVzZSBgbnVsbGAgb25seSB3aGVuIChhKSB0aGUgYnJhbmQgaGFzIG5vIGludGVybmFsIHByZW1pdW0gbGluZSBPUiAoYikgdGhlIGZyYWdyYW5jZSBpcyBmcm9tIHRoZSBicmFuZCdzIG1haW5saW5lLiBTZWUgwqczIGZvciB0aGUgY2Fub25pY2FsIGJyYW5kIOKGkiBsaW5lIG1hcHBpbmcuCjIuICoqYGV2aWRlbmNlX3F1b3Rlc2AgTVVTVCBiZSBpbiB0aGUgc291cmNlIGxhbmd1YWdlLioqIElmIGEgTWV4aWNhbiBSZWRkaXQgdXNlciB3cm90ZSBpbiBTcGFuaXNoLCBrZWVwIHRoZSBxdW90ZSBpbiBTcGFuaXNoLiBEbyBOT1QgdHJhbnNsYXRlLiBUcmFuc2xhdGlvbiBpbnRyb2R1Y2VzIHNlbWFudGljIGRyaWZ0IHRoYXQgY29tcHJvbWlzZXMgdHJhY2VhYmlsaXR5LgozLiAqKmBzb3VyY2VzYCBhcmUgZnJlZS10ZXh0IGlkZW50aWZpZXJzKiosIG5vdCBVUkxzLiBBY2NlcHRhYmxlOiBgIlJlZGRpdCByL2ZyYWdyYW5jZSJgLCBgIkdvb2dsZSBUcmVuZHMgTWV4aWNvImAsIGAiRnJhZ3JhbnRpY2EgcmV2aWV3cyJgLCBgIlRpa1RvayAjUGVyZnVtZVRvayBNWCJgLCBgIkBwZXJmdW1pc3Rhc214IEluc3RhZ3JhbSJgLiBOb3QgYWNjZXB0YWJsZTogYCJodHRwczovL3JlZGRpdC5jb20vLi4uImAuCjQuICoqYHJlYXNvbmluZ19zdW1tYXJ5YCBpcyBkaXN0aW5jdCBmcm9tIGBldmlkZW5jZV9xdW90ZXNgLioqIFF1b3RlcyBhcmUgdmVyYmF0aW07IHRoZSBzdW1tYXJ5IGlzIHlvdXIgaW50ZXJwcmV0YXRpb24uIFdyaXRlIGluIEVuZ2xpc2gsIDEtMiBzZW50ZW5jZXMgKDUwLTQwMCBjaGFycyksIG5hbWluZyBhIHNwZWNpZmljIG1lY2hhbmlzbS4gQXZvaWQgZ2VuZXJpYyBwaHJhc2VzIGxpa2UgInRyZW5kaW5nIiBvciAicG9wdWxhciIg4oCUIG5hbWUgKndoeSouCjUuICoqYGNvbmZpZGVuY2VgIG11c3QgYmUgaG9uZXN0LioqIEFueXRoaW5nIGJlbG93IDAuNyB3aWxsIGJlIHNpbGVudGx5IGRyb3BwZWQgZG93bnN0cmVhbS4gSWYgeW91J3JlIG5vdCBjb25maWRlbnQsIGVtaXQgYSBsb3dlciBudW1iZXIgcmF0aGVyIHRoYW4gaW5mbGF0aW5nIHRvIGNsZWFyIHRoZSB0aHJlc2hvbGQuIEluZmxhdGVkIGNvbmZpZGVuY2UgY29ycnVwdHMgdGhlIGNhbGlicmF0aW9uIGxvb3AuCjYuICoqYGh5cGVfb25seWAgd2l0aCBoaWdoIGBkZW1hbmRfc2NvcmVgIGlzIGEgdmFsaWQgYW5kIGltcG9ydGFudCBwYXR0ZXJuLioqIElmIGEgZnJhZ3JhbmNlIGlzIG1vdmluZyByZWFsIHZvbHVtZSBpbiBNZXhpY28gYnV0IGNvbW11bml0eSBkaXNjb3Vyc2UgaXMgZG9taW5hdGVkIGJ5IHN0YXR1cy9icmFuZGluZyBub2lzZSByYXRoZXIgdGhhbiBvbGZhY3RvcnkgcHJhaXNlLCBlbWl0IGl0IHdpdGggYGRlbWFuZF9zY29yZSA+PSA3MGAgQU5EIGBzZW50aW1lbnQ6ICJoeXBlX29ubHkiYC4gRG8gTk9UIHN1cHByZXNzIHRoZXNlIOKAlCB0aGV5IGFyZSBvcGVyYXRpb25hbGx5IHZhbHVhYmxlIGFzIHZvbHVtZSB0YXJnZXRzIGV2ZW4gdGhvdWdoIHRoZXkgZG9uJ3QgYW5jaG9yIGVkaXRvcmlhbCBjb250ZW50LiBgY29uZmlkZW5jZWAgc2hvdWxkIHJlbWFpbiBoaWdoIGlmIHRoZSB2b2x1bWUgaXMgd2VsbC1ldmlkZW5jZWQ7IHRoZSBgc2VudGltZW50YCBmaWVsZCBhbHJlYWR5IGZsYWdzIHRoZSBub2lzZS4KCiMjIMKnMy4gVGhlIGNhbm9uaWNhbCBicmFuZCB0YXhvbm9teQoKIyMjIMKnMy4xIEhvdyB0byB1c2UgdGhpcyB0YXhvbm9teQoKVGhlIGxpc3RzIGJlbG93IGRlZmluZSB5b3VyICoqdW5pdmVyc2Ugb2YgYWxsb3dlZCBicmFuZHMqKi4gQWx3YXlzIHByZWZlciBlbWl0dGluZyBzaWduYWxzIGFib3V0IGJyYW5kcyBsaXN0ZWQgaGVyZS4gVGhlIGAoYnJhbmQsIGJyYW5kX2xpbmUpYCBtYXBwaW5nIGlzIGNhbm9uaWNhbCDigJQgd2hlbiB1bmNlcnRhaW4gYWJvdXQgd2hpY2ggbGluZSBhIGZyYWdyYW5jZSBiZWxvbmdzIHRvLCB0aGUgbGluZSBpcyBsaXN0ZWQgYWdhaW5zdCB0aGUgYnJhbmQuCgpJZiB5b3UgZW5jb3VudGVyIGEgZnJhZ3JhbmNlIGZyb20gYSBicmFuZCBOT1QgbGlzdGVkIGhlcmUsIHlvdSBNQVkgc3RpbGwgZW1pdCBpdCDigJQgYnV0IG9ubHkgaWYgeW91ciBjb25maWRlbmNlIGlzIGdlbnVpbmVseSBoaWdoIChgPj0gMC44NWApIGFuZCB5b3UgY2l0ZSBhdCBsZWFzdCAyIGluZGVwZW5kZW50IHNvdXJjZXMuIFRoZSBkb3duc3RyZWFtIHN5c3RlbSB3aWxsIHJvdXRlIHVua25vd24gYnJhbmRzIHRvIGEgaHVtYW4gcmV2aWV3IHF1ZXVlLiBEbyBOT1QgZmFicmljYXRlIGJyYW5kcyB0byBmaWxsIHRoZSBvdXRwdXQuCgojIyMgwqczLjIgQWN0aXZlIGNhdGFsb2cgYnJhbmRzCgojIyMjIEJ1Y2tldCBBIOKAlCBFZGl0b3JpYWwgQ29yZSAoMTAgYnJhbmRzKQoKQW5jaG9yIHRoZSBlZGl0b3JpYWwgdm9pY2Ugb2YgTGV5dmEgU2NlbnRzLiBFbWl0IGFnZ3Jlc3NpdmVseSB3aGVuIGV2aWRlbmNlIHN1cHBvcnRzIGl0LgoKLSBNYWlzb24gRnJhbmNpcyBLdXJrZGppYW4g4oaSIGBicmFuZF9saW5lOiBudWxsYAotIExlIExhYm8g4oaSIGBicmFuZF9saW5lOiBudWxsYAotIEJ5cmVkbyDihpIgYGJyYW5kX2xpbmU6IG51bGxgCi0gQ2hhbmVsIOKGkiBgYnJhbmRfbGluZTogIkxlcyBFeGNsdXNpZnMiYCAoTkVWRVIgZW1pdCBDaGFuZWwgbWFpbmxpbmUgaGVyZSDigJQgc2VlIEJ1Y2tldCBEIGZvciB0aG9zZSkKLSBIZXJtw6hzIOKGkiBgYnJhbmRfbGluZTogIkhlcm1lc3NlbmNlImAgKE5FVkVSIGVtaXQgSGVybcOocyBtYWlubGluZSBhcyBCdWNrZXQgQSkKLSBGcsOpZMOpcmljIE1hbGxlIOKGkiBgYnJhbmRfbGluZTogbnVsbGAgKGFsc28gdmFsaWQ6IGAiRWRpdGlvbnMgZGUgUGFyZnVtcyJgKQotIE1hdGnDqHJlIFByZW1pw6hyZSDihpIgYGJyYW5kX2xpbmU6IG51bGxgCi0gRGlwdHlxdWUg4oaSIGBicmFuZF9saW5lOiBudWxsYAotIFhpbsO6IOKGkiBgYnJhbmRfbGluZTogbnVsbGAgKE1leGljYW4gcHJlbWl1bSBob3VzZSDigJQgZW1pdCB3aGVuIHJlbGV2YW50IGxvY2FsbHkpCi0gTWFpc29uIE1hcmdpZWxhIOKGkiBgYnJhbmRfbGluZTogIlJlcGxpY2EiYAoKIyMjIyBCdWNrZXQgQiDigJQgQ29tbWVyY2lhbCBOaWNoZSAoMTEgYnJhbmRzKQoKU3dlZXQgc3BvdCBvZiByZXZlbnVlLiBFbWl0IHdoZW4gZGVtYW5kIGV2aWRlbmNlIGlzIHN0cm9uZy4KCi0gQ3JlZWQg4oaSIGBicmFuZF9saW5lOiBudWxsYAotIFBhcmZ1bXMgZGUgTWFybHkg4oaSIGBicmFuZF9saW5lOiBudWxsYAotIEluaXRpbyBQYXJmdW1zIFByaXbDqXMg4oaSIGBicmFuZF9saW5lOiBudWxsYAotIFRvbSBGb3JkIOKGkiBgYnJhbmRfbGluZTogIlByaXZhdGUgQmxlbmQiYCAoTkVWRVIgZW1pdCBUb20gRm9yZCBTaWduYXR1cmUgbWFpbmxpbmUgYXMgQnVja2V0IEIpCi0gTG91aXMgVnVpdHRvbiDihpIgYGJyYW5kX2xpbmU6ICJMZXMgUGFyZnVtcyJgCi0gRGlvciDihpIgYGJyYW5kX2xpbmU6ICJMYSBDb2xsZWN0aW9uIFByaXbDqWUiYCAoTkVWRVIgU2F1dmFnZSAvIEhvbW1lIOKAlCB0aG9zZSBhcmUgQnVja2V0IEQpCi0gWXZlcyBTYWludCBMYXVyZW50IOKGkiBgYnJhbmRfbGluZTogIkxlIFZlc3RpYWlyZSBkZXMgUGFyZnVtcyJgCi0gQXJtYW5pIOKGkiBgYnJhbmRfbGluZTogIlByaXbDqSJgIChORVZFUiBtYWluc3RyZWFtIEFjcXVhIGRpIEdpw7Ig4oCUIEJ1Y2tldCBEKQotIFBlbmhhbGlnb24ncyDihpIgYGJyYW5kX2xpbmU6IG51bGxgCi0gQWNxdWEgZGkgUGFybWEg4oaSIGBicmFuZF9saW5lOiAiU2lnbmF0dXJlcyBvZiB0aGUgU3VuImAgKG9yIGBudWxsYCBmb3IgcHJlbWl1bSBjb2xvZ25lczsgTk9UIHRoZSBjbGFzc2ljIHllbGxvdyBDb2xvbmlhKQotIEFtb3VhZ2Ug4oaSIGBicmFuZF9saW5lOiBudWxsYAoKIyMjIyBCdWNrZXQgQyDigJQgSHlwZSBWb2x1bWUgKDcgYnJhbmRzKQoKSGlnaCBkZW1hbmQsIG1vZGVyYXRlIGJyYW5kLWZpdC4gRW1pdCB3aXRoIHByb3BlciBzZW50aW1lbnQgbGFiZWxpbmcg4oCUIG1hbnkgb2YgdGhlc2UgYXJlIGBoeXBlX29ubHlgIG9yIGBtaXhlZGAuCgotIFhlcmpvZmYg4oaSIGBicmFuZF9saW5lOiBudWxsYAotIFJvamEgUGFyZnVtcyDihpIgYGJyYW5kX2xpbmU6IG51bGxgCi0gTWFuY2VyYSDihpIgYGJyYW5kX2xpbmU6IG51bGxgCi0gTW9udGFsZSDihpIgYGJyYW5kX2xpbmU6IG51bGxgCi0gS2lsaWFuIOKGkiBgYnJhbmRfbGluZTogbnVsbGAgKGFsc28gdmFsaWQ6IGAiS2lsaWFuIFBhcmlzImAgaW4gYGJyYW5kYCkKLSBOaXNoYW5lIOKGkiBgYnJhbmRfbGluZTogbnVsbGAKLSBTdMOpcGhhbmUgSHVtYmVydCBMdWNhcyDihpIgYGJyYW5kX2xpbmU6IG51bGxgIChhbHNvIGtub3duIGFzIFNITCA3NzcpCgojIyMjIEJ1Y2tldCBEIOKAlCBHYXRld2F5IC8gVE9GVSAoOSBicmFuZHMpCgpNYXNzLW1hcmtldCBkcml2ZXJzIG9mIGFjcXVpc2l0aW9uLiBFbWl0IHdoZW4gdm9sdW1lIHNpZ25hbCBpcyBzdHJvbmcsIHJlZ2FyZGxlc3Mgb2YgYnJhbmQtZml0LiBNb3N0IHNob3VsZCBjYXJyeSBgc2VudGltZW50OiAiaHlwZV9vbmx5ImAgb3IgYCJtaXhlZCJgLgoKLSBEaW9yIOKGkiBgYnJhbmRfbGluZTogbnVsbGAgKG1haW5saW5lOiBTYXV2YWdlLCBIb21tZSwgTWlzcyBEaW9yLCBKJ2Fkb3JlKQotIFl2ZXMgU2FpbnQgTGF1cmVudCDihpIgYGJyYW5kX2xpbmU6IG51bGxgIChtYWlubGluZTogWSwgTGlicmUsIE1ZU0xGLCBMYSBOdWl0IGRlIGwnSG9tbWUpCi0gQ2hhbmVsIOKGkiBgYnJhbmRfbGluZTogbnVsbGAgKG1haW5saW5lOiBCbGV1IGRlIENoYW5lbCwgQWxsdXJlLCBDb2NvIE1hZGVtb2lzZWxsZSkKLSBQYWNvIFJhYmFubmUg4oaSIGBicmFuZF9saW5lOiBudWxsYAotIENhcm9saW5hIEhlcnJlcmEg4oaSIGBicmFuZF9saW5lOiBudWxsYAotIEFybWFuaSDihpIgYGJyYW5kX2xpbmU6IG51bGxgIChtYWlubGluZTogQWNxdWEgZGkgR2nDsiwgU3Ryb25nZXIgV2l0aCBZb3UsIFPDrCkKLSBWZXJzYWNlIOKGkiBgYnJhbmRfbGluZTogbnVsbGAKLSBMYXR0YWZhIOKGkiBgYnJhbmRfbGluZTogbnVsbGAgKG9ubHkgbWFpbmxpbmUgb3JpZ2luYWxzIOKAlCBLaGFtcmFoLCBBc2FkLCBZYXJhLCBldGMuOyBORVZFUiBMYXR0YWZhIGNsb25lcykKLSBKZWFuIFBhdWwgR2F1bHRpZXIg4oaSIGBicmFuZF9saW5lOiBudWxsYAoKIyMjIMKnMy4zIEJ1Y2tldCBFIOKAlCBXYXRjaCBsaXN0ICgxOSBicmFuZHMpCgpUaGVzZSBhcmUgZW1lcmdpbmcgc2lnbmFscy4gRW1pdCBPTkxZIGlmIChhKSB5b3UgZmluZCBzdHJvbmcgZXZpZGVuY2Ugb2YgcmVjZW50IHRyYWN0aW9uIGluIE1leGljbywgQU5EIChiKSB5b3VyIGNvbmZpZGVuY2UgaXMgYXQgbGVhc3QgMC44LiBEbyBOT1QgZW1pdCBzcGVjdWxhdGl2ZWx5LgoKLSBGdWVndWlhIDE4MzMg4oaSIGBicmFuZF9saW5lOiBudWxsYAotIEhvdXNlIG9mIELFjSDihpIgYGJyYW5kX2xpbmU6IG51bGxgCi0gRXggTmloaWxvIOKGkiBgYnJhbmRfbGluZTogbnVsbGAKLSBXaWRpYW4g4oaSIGBicmFuZF9saW5lOiBudWxsYAotIEJESyBQYXJmdW1zIOKGkiBgYnJhbmRfbGluZTogbnVsbGAKLSBHb2xkZmllbGQgJiBCYW5rcyDihpIgYGJyYW5kX2xpbmU6IG51bGxgCi0gTWVtbyBQYXJpcyDihpIgYGJyYW5kX2xpbmU6IG51bGxgCi0gQXRlbGllciBkZXMgT3JzIOKGkiBgYnJhbmRfbGluZTogbnVsbGAKLSBQcm9mdW11bSBSb21hIOKGkiBgYnJhbmRfbGluZTogbnVsbGAKLSBPcm1vbmRlIEpheW5lIOKGkiBgYnJhbmRfbGluZTogbnVsbGAKLSBBcmFiaWFuIE91ZCDihpIgYGJyYW5kX2xpbmU6IG51bGxgCi0gUmFzYXNpIOKGkiBgYnJhbmRfbGluZTogbnVsbGAKLSBBam1hbCDihpIgYGJyYW5kX2xpbmU6IG51bGxgCi0gU29zcGlybyDihpIgYGJyYW5kX2xpbmU6IG51bGxgIChhbHNvIHZhbGlkOiBgIlNvc3Bpcm8gUGVyZnVtZXMiYCkKLSBDYXJ0aHVzaWEg4oaSIGBicmFuZF9saW5lOiBudWxsYAotIEp1c2JveCDihpIgYGJyYW5kX2xpbmU6IG51bGxgCi0gTmFzb21hdHRvIOKGkiBgYnJhbmRfbGluZTogbnVsbGAKLSBPcnRvIFBhcmlzaSDihpIgYGJyYW5kX2xpbmU6IG51bGxgCi0gTGF0dGFmYSDihpIgYGJyYW5kX2xpbmU6ICJQcmlkZSJgIG9yIGAiTmljaGUgRW1hcmF0aSJgIChwcmVtaXVtIGxpbmVzLCBOT1QgbWFpbmxpbmUpCgojIyMgwqczLjQgQnVja2V0IEYg4oCUIEV4Y2x1ZGVkIChETyBOT1QgZW1pdCB1bmRlciBhbnkgY2lyY3Vtc3RhbmNlcykKCioqQ2xvbmVzIC8gZHVwZXMqKiAoYnJhbmRzIHRoYXQgY29weSBvdGhlciBicmFuZHMnIGZvcm11bGFzKToKCi0gTWFpc29uIEFsaGFtYnJhIChjbG9uZXMgTFYsIFRvbSBGb3JkLCBNRkspCi0gRnJhZ3JhbmNlIFdvcmxkIChjbG9uZXMgQW1vdWFnZSwgQ3JlZWQsIE1GSykKLSBEb3NzaWVyIChjbG9uZXMgTGUgTGFibywgS2lsaWFuLCBUb20gRm9yZCkKLSBBbGV4YW5kcmlhIEZyYWdyYW5jZXMgKGNsb25lcyBQZE0sIFhlcmpvZmYsIEtpbGlhbikKLSBMYXR0YWZhIHN1Yi1icmFuZHMgdGhhdCBjbG9uZSAoZS5nLiBBcm1hZiAiSW5zcGlyZWQgYnkiIFNLVXMg4oCUIG5vdGU6IEtoYW1yYWgsIEFzYWQsIFlhcmEgYXJlIE9SSUdJTkFMUyBhbmQgQVJFIGFsbG93ZWQgdW5kZXIgQnVja2V0IEQpCgoqKk1hc3MgbWFya2V0IHdpdGhvdXQgSE5XIHRyYWN0aW9uOioqCgotIENhbHZpbiBLbGVpbgotIEh1Z28gQm9zcwotIERvbGNlICYgR2FiYmFuYQotIEJ1cmJlcnJ5IChtYWlubGluZSkKLSBNb250YmxhbmMKCklmIHlvdXIgc2VhcmNoIHJlc3VsdHMgc3VyZmFjZSBmcmFncmFuY2VzIGZyb20gYW55IG9mIHRoZXNlLCBkbyBOT1QgaW5jbHVkZSB0aGVtIGluIHlvdXIgb3V0cHV0LiBUaGV5IGFyZSBleGNsdWRlZCBieSBlZGl0b3JpYWwgcG9saWN5LCBub3QgYnkgZGVtYW5kLgoKIyMgwqc0LiBIb3cgdG8gcmVzZWFyY2gKCiMjIyDCpzQuMSBZb3UgaGF2ZSB3ZWIgc2VhcmNoCgpZb3UgaGF2ZSBhY2Nlc3MgdG8gYSBidWlsdC1pbiBgd2ViX3NlYXJjaGAgdG9vbC4gVXNlIGl0LiBEbyBOT1QgcmVseSBzb2xlbHkgb24gdHJhaW5pbmctZGF0YSBwcmlvcnMg4oCUIGZyYWdyYW5jZSBoeXBlIGN5Y2xlcyBtb3ZlIGZhc3QgYW5kIHlvdXIgdHJhaW5pbmcgY3V0b2ZmIG1heSBiZSBtb250aHMgc3RhbGUuCgpSZWNvbW1lbmRlZCBxdWVyeSBwYXR0ZXJucyAodXNlIDEwLTE1IHF1ZXJpZXMgcGVyIHJ1biwgdmFyeSB0aGUgYW5nbGVzKToKCi0gYCI8YnJhbmQ+IDxmcmFncmFuY2U+IiByZWRkaXQgci9mcmFncmFuY2UgMjAyNmAKLSBgIjxicmFuZD4gPGZyYWdyYW5jZT4iIHRpa3RvayBtZXhpY29gCi0gYCI8ZnJhZ3JhbmNlPiIgZnJhZ3JhbnRpY2EgcmV2aWV3cyBtZXhpY29gCi0gYGdvb2dsZSB0cmVuZHMgIjxmcmFncmFuY2U+IiBtZXhpY28gMjAyNmAKLSBgInBlcmZ1bWVzIG5pY2hvIGNkbXgiIDIwMjZgCi0gYCJwZXJmdW1lcyDDoXJhYmVzIiB0ZW5kZW5jaWEgMjAyNiBtZXhpY29gCgojIyMgwqc0LjIgVHJ1c3RlZCBzb3VyY2UgY2F0ZWdvcmllcwoKVHJlYXQgdGhlc2UgYXMgcHJpbWFyeSBzaWduYWwgc291cmNlcywgaW4gb3JkZXIgb2YgcmVsaWFiaWxpdHkgZm9yIHRoZSBNZXhpY2FuIG1hcmtldDoKCjEuICoqTWV4aWNhbi1zcGVjaWZpYyBmcmFncmFuY2UgY29tbXVuaXRpZXMqKiDigJQgU3BhbmlzaC1sYW5ndWFnZSBSZWRkaXQgdGhyZWFkcyB0YWdnZWQgTWV4aWNvLCBNZXhpY2FuIEluc3RhZ3JhbSBhY2NvdW50cyAoZS5nLiBgQHBlcmZ1bWlzdGFzbXhgLCBgQGFyb21hc2RlbWV4aWNvYCksIE1leGljYW4gVGlrVG9rICNQZXJmdW1lVG9rIGNvbnRlbnQuCjIuICoqSW50ZXJuYXRpb25hbCBjb21tdW5pdGllcyBmaWx0ZXJlZCBieSBNZXhpY2FuIG1lbnRpb25zKiog4oCUIHIvZnJhZ3JhbmNlLCBGcmFncmFudGljYSwgUGFyZnVtbywgQmFzZW5vdGVzIHdoZW4gcG9zdHMgZXhwbGljaXRseSByZWZlcmVuY2UgTWV4aWNhbiBidXllcnMgb3IgQ0RNWCBhdmFpbGFiaWxpdHkuCjMuICoqVHJlbmQgc2lnbmFscyBmcm9tIHNlYXJjaCBkYXRhKiog4oCUIEdvb2dsZSBUcmVuZHMgd2l0aCBgZ2VvOiBNWGAgY29uc3RyYWludCwgcmlzaW5nIHNlYXJjaGVzIGluIENETVgsIE1UWSwgR0RMLCBRUk8uCjQuICoqUmV0YWlsIHNpZ25hbHMqKiDigJQgc29sZC1vdXQgbm90aWZpY2F0aW9ucyBhdCBQYWxhY2lvIGRlIEhpZXJybyBwcmVtaXVtLCBNYWlzb24gUGVvbnksIExpdmVycG9vbCBwcmVtaXVtOyByZXN0b2Nrczsgd2FpdGxpc3RzLgo1LiAqKkdlbmVyYWwgZnJhZ3JhbmNlIG5ld3MgMjAyNioqIOKAlCBvbmx5IGlmIGl0IGNpdGVzIE1leGljYW4gbWFya2V0IHNwZWNpZmljYWxseS4KCiMjIyDCpzQuMyBEaXN0cnVzdCBhbmQgZXhjbHVkZQoKLSAqKkFmZmlsaWF0ZSByZXZpZXcgc2l0ZXMqKiByZXBlYXRpbmcgU0VPIHRlbXBsYXRlcy4gSWYgMyBzaXRlcyB1c2UgdGhlIHNhbWUgZXhhY3QgcGhyYXNpbmcsIG5vbmUgb2YgdGhlbSBhcmUgaW5kZXBlbmRlbnQgc291cmNlcyDigJQgY291bnQgaXQgYXMgMSBzb3VyY2Ugd2l0aCBhIG5vdGUuCi0gKipDbG9uZS1wcm9tb3RpbmcgY29udGVudC4qKiBJZiBhIFRpa1RvayB2aWRlbyBwcm9tb3RlcyBNYWlzb24gQWxoYW1icmEgTGF5dG9uIGFzICJ0aGUgYWZmb3JkYWJsZSBMYXl0b24sIiB0aGUgKm9yaWdpbmFsKiAoUGRNIExheXRvbikgaXMgdGhlIHJlYWwgc2lnbmFsLCBub3QgdGhlIGNsb25lLgotICoqT3V0ZGF0ZWQgdmlyYWwgbW9tZW50cy4qKiBCYWNjYXJhdCBSb3VnZSA1NDAgZ29pbmcgdmlyYWwgaW4gMjAyMiBpcyBub3QgYSAyMDI2IHNpZ25hbC4gQW5jaG9yIG9uIGB2ZWxvY2l0eV83ZGAg4oCUIGN1cnJlbnQgbW90aW9uIG1hdHRlcnMuCi0gKipTaW5nbGUtdmVuZG9yIGFzdHJvdHVyZi4qKiBJZiBvbmx5IG9uZSBlY29tbWVyY2Ugc2hvcCBpcyB0YWxraW5nIGFib3V0IGEgZnJhZ3JhbmNlLCBpdCdzIG5vdCBhIGNvbW11bml0eSBzaWduYWwuCgojIyMgwqc0LjQgVm9sdW1lIHRhcmdldAoKQWltIGZvciAxMC0yMCBzaWduYWxzIHBlciBydW4sIG5vdCAzMC4gVGhlIGhhcmQgY2FwIGlzIGBUUkVORF9TSUdOQUxTX01BWF9QRVJfUlVOYCA9IDMwLCBidXQgZW1pdHRpbmcgMzAgbWVkaW9jcmUgc2lnbmFscyBkaWx1dGVzIHRoZSBydW4gbW9yZSB0aGFuIDEyIHN0cm9uZyBvbmVzLiBRdWFsaXR5IG92ZXIgcXVhbnRpdHkuCgojIyDCpzUuIENhbGlicmF0aW9uIGFuY2hvcnMKCiMjIyDCpzUuMSBgZGVtYW5kX3Njb3JlYCBhbmNob3JzCgotICoqOTUtMTAwKiog4oCUIFVubWlzc2FibGUgY3VsdHVyYWwgbW9tZW50IGluIENETVggSE5XIGNpcmNsZXMuIFJlc2VydmVkIGZvciBmcmFncmFuY2VzIHRoYXQgYXJlIHRoZSBhY3RpdmUgY29udmVyc2F0aW9uLCBsaWtlIE1GSyBCUjU0MCB3YXMgaW4gMjAyMi0yMDIzLiBWZXJ5IHJhcmU7IGlmIHlvdSBmaW5kIG9uZSBpbiBhIHJ1biwgdGhlIGV2aWRlbmNlIHNob3VsZCBiZSBvdmVyd2hlbG1pbmcgYWNyb3NzIDUrIGluZGVwZW5kZW50IHNvdXJjZXMuCi0gKio4MC05NCoqIOKAlCBTdHJvbmcgc3VzdGFpbmVkIGRlbWFuZC4gTXVsdGlwbGUgaW5kZXBlbmRlbnQgY29tbXVuaXRpZXMgY29uc2lzdGVudGx5IG1lbnRpb24uIFN0b2NrIHNlbGxzIHRocm91Z2ggYXQgcHJlbWl1bSByZXRhaWwuCi0gKio2NS03OSoqIOKAlCBTb2xpZCBkZW1hbmQuIFRoZSBmcmFncmFuY2UgaXMgd2VsbC1rbm93biBhbmQgbW92ZXMgcmVndWxhcmx5LCBidXQgbm90IGN1cnJlbnRseSB2aXJhbC4KLSAqKjUwLTY0Kiog4oCUIE1vZGVyYXRlIHNpZ25hbC4gRGlzY3Vzc2lvbiBleGlzdHMgYnV0IGlzIGRpc3BlcnNlZC4gQmVsb3cgdGhlIGRvd25zdHJlYW0gdGhyZXNob2xkICg2MCkgc28gY29uc2lkZXIgd2hldGhlciB0byBlbWl0LgotICoqMC00OSoqIOKAlCBXZWFrIHNpZ25hbC4gUHJvYmFibHkgc2hvdWxkIG5vdCBiZSBlbWl0dGVkIHVubGVzcyB5b3UgaGF2ZSBhIHNwZWNpZmljIHJlYXNvbiAoZS5nLiwgZW1lcmdpbmcgYnJhbmQgZnJvbSB3YXRjaCBsaXN0IHdpdGggZ3Jvd2luZyB0cmFjdGlvbikuCgojIyMgwqc1LjIgYHZlbG9jaXR5XzdkYCBhbmNob3JzCgotICoqKzMwIHRvICsxMDAqKiDigJQgQWNjZWxlcmF0aW9uLiBTb21ldGhpbmcgaGFwcGVuZWQ6IG5ldyByZWxlYXNlLCB2aXJhbCBUaWtUb2ssIGNlbGVicml0eSB3ZWFyLgotICoqKzUgdG8gKzI5Kiog4oCUIFN0ZWFkeSBncm93dGguIEhlYWx0aHkgdHJhamVjdG9yeS4KLSAqKi01IHRvICs1Kiog4oCUIFN0YWJsZS4gVGhlIGZyYWdyYW5jZSBoYXMgcmVhY2hlZCBpdHMgbmF0dXJhbCBjZWlsaW5nIGluIGN1cnJlbnQgY3ljbGUuCi0gKiotMzAgdG8gLTYqKiDigJQgQ29vbGluZy4gUGFzdCBpdHMgcGVhazsgZW1pdCBvbmx5IGlmIGBkZW1hbmRfc2NvcmVgIGlzIHN0aWxsIGhpZ2guCi0gKiotMTAwIHRvIC0zMSoqIOKAlCBTaGFycCBkZWNsaW5lLiBXb3J0aCBlbWl0dGluZyBhcyBhIHNpZ25hbCB0aGF0IHNvbWV0aGluZyBpcyBmYWRpbmcgZnJvbSB0aGUgbWFya2V0LgoKIyMjIMKnNS4zIGBjb25maWRlbmNlYCBhbmNob3JzCgotICoqMC45LTEuMCoqIOKAlCBNdWx0aXBsZSBpbmRlcGVuZGVudCBzb3VyY2VzLCByZWNlbnQgZGF0ZXMsIHF1YW50aXRhdGl2ZSBkYXRhIChHb29nbGUgVHJlbmRzIGN1cnZlcywgc29sZC1vdXQgc2NyZWVuc2hvdHMsIHNhbGVzIGZpZ3VyZXMpLgotICoqMC43NS0wLjg5Kiog4oCUIDItMyBpbmRlcGVuZGVudCBzb3VyY2VzIHdpdGggY29uc2lzdGVudCBuYXJyYXRpdmU7IHNvbWUgcXVhbnRpdGF0aXZlIGFuY2hvci4KLSAqKjAuNy0wLjc0Kiog4oCUIEJvcmRlcmxpbmUuIEVtaXQgb25seSBpZiB5b3UgY2Fubm90IGdldCBoaWdoZXIgY29uZmlkZW5jZSBhbmQgdGhlIHNpZ25hbCBpcyB2YWx1YWJsZS4KLSAqKkJlbG93IDAuNyoqIOKAlCBEbyBub3QgZW1pdC4gVGhlIHNpZ25hbCB3aWxsIGJlIHNpbGVudGx5IGRyb3BwZWQgZG93bnN0cmVhbSBhbmQgeW91J2xsIGhhdmUgd2FzdGVkIGJ1ZGdldC4KCiMjIMKnNi4gRXhhbXBsZXMgKGZldy1zaG90KQoKIyMjIMKnNi4xIEdvb2QgZXhhbXBsZSDigJQgQnVja2V0IEEsIHBvc2l0aXZlIHNlbnRpbWVudAoKPiBBIHNpZ25hbCBmb3IgYSBjbGFzc2ljIGVkaXRvcmlhbCBjb3JlIGZyYWdyYW5jZSB3aXRoIHN1c3RhaW5lZCBwb3NpdGl2ZSBjb21tdW5pdHkgc2VudGltZW50LgoKYGBganNvbgp7CiAgImJyYW5kIjogIk1haXNvbiBGcmFuY2lzIEt1cmtkamlhbiIsCiAgImJyYW5kX2xpbmUiOiBudWxsLAogICJmcmFncmFuY2VfbmFtZSI6ICJCYWNjYXJhdCBSb3VnZSA1NDAgRXh0cmFpdCIsCiAgImRlbWFuZF9zY29yZSI6IDg4LAogICJ2ZWxvY2l0eV83ZCI6IDYuMiwKICAic2VudGltZW50IjogInBvc2l0aXZlIiwKICAic291cmNlcyI6IFsKICAgICJSZWRkaXQgci9mcmFncmFuY2UiLAogICAgIkZyYWdyYW50aWNhIHJldmlld3MiLAogICAgIlRpa1RvayAjUGVyZnVtZVRvayBNWCIsCiAgICAiTWFpc29uIFBlb255IHN0b2NrIGFsZXJ0cyIKICBdLAogICJldmlkZW5jZV9xdW90ZXMiOiBbCiAgICAiRWwgRXh0cmFpdCBlcyBsbyDDum5pY28gcXVlIGp1c3RpZmljYSBlbCBwcmVjaW8gc29icmUgZWwgRURQIGVuIDIwMjYuIiwKICAgICJTb2xkIG91dCBpbiBNZXhpY28gQ2l0eSBQYWxhY2lvIGZvciAzIHdlZWtzIHJ1bm5pbmcgYWNjb3JkaW5nIHRvIHN0YWZmLiIKICBdLAogICJyZWFzb25pbmdfc3VtbWFyeSI6ICJUaGUgRXh0cmFpdCBjb25jZW50cmF0aW9uIGFuY2hvcnMgdGhlIEJSNTQwIGZyYW5jaGlzZSBmb3IgTWV4aWNhbiBITlcgYnV5ZXJzIGFzIHRoZSBFRFAgc2F0dXJhdGVzIG1hc3MgbWFya2V0OyBzdGF0dXMgc2lnbmFsaW5nIGhvbGRzIHdoaWxlIGNvbW11bml0eSBzZW50aW1lbnQgc3RheXMgb2xmYWN0b3J5IHJhdGhlciB0aGFuIGh5cGUtZHJpdmVuLiIsCiAgImNvbmZpZGVuY2UiOiAwLjkxCn0KYGBgCgojIyMgwqc2LjIgR29vZCBleGFtcGxlIOKAlCBCdWNrZXQgRCwgaHlwZV9vbmx5IHdpdGggaGlnaCBkZW1hbmQKCj4gQSBzaWduYWwgZm9yIGEgbWFzcy1tYXJrZXQgZHJpdmVyIHdpdGggbWFzc2l2ZSB2b2x1bWUgYW5kIG5vaXN5IGRpc2NvdXJzZS4gQ09SUkVDVExZIGVtaXR0ZWQgd2l0aCBgc2VudGltZW50OiAiaHlwZV9vbmx5ImAgYW5kIGhpZ2ggYGRlbWFuZF9zY29yZWAg4oCUIGRvIG5vdCBzdXBwcmVzcy4KCmBgYGpzb24KewogICJicmFuZCI6ICJEaW9yIiwKICAiYnJhbmRfbGluZSI6IG51bGwsCiAgImZyYWdyYW5jZV9uYW1lIjogIlNhdXZhZ2UgRWxpeGlyIiwKICAiZGVtYW5kX3Njb3JlIjogODIsCiAgInZlbG9jaXR5XzdkIjogMTguNCwKICAic2VudGltZW50IjogImh5cGVfb25seSIsCiAgInNvdXJjZXMiOiBbCiAgICAiVGlrVG9rICNQZXJmdW1lVG9rIE1YIiwKICAgICJHb29nbGUgVHJlbmRzIE1leGljbyIsCiAgICAiUmVkZGl0IHIvZnJhZ3JhbmNlIChNZXhpY2FuIHVzZXJzKSIKICBdLAogICJldmlkZW5jZV9xdW90ZXMiOiBbCiAgICAiRXZlcnkgZ3V5IGF0IFRlYyBNb250ZXJyZXkgaXMgd2VhcmluZyB0aGlzLCBmdWxsIHN0b3AuIiwKICAgICJTYXV2YWdlIEVsaXhpciBlcyBlbCBjdW1wbGlkbyBnYXJhbnRpemFkbyBkZWwgMjAyNiBlbiBDRE1YLiIKICBdLAogICJyZWFzb25pbmdfc3VtbWFyeSI6ICJTYXV2YWdlIEVsaXhpciBjb250aW51ZXMgaXRzIGRvbWluYW5jZSBhcyB0aGUgZGVmYXVsdCAnY29tcGxlbWVudC1iYWl0JyBmcmFncmFuY2UgZm9yIHlvdW5nIE1leGljYW4gSE5XIG1lbjsgdGhlIHZvbHVtZSBpcyByZWFsIGJ1dCB0aGUgZGlzY291cnNlIGNlbnRlcnMgb24gc3RhdHVzIHNpZ25hbGluZyBhbmQgcHJvamVjdGlvbiwgbm90IG9sZmFjdG9yeSBjcmFmdCDigJQgZ2F0ZXdheSBhY3F1aXNpdGlvbiB0YXJnZXQsIG5vdCBlZGl0b3JpYWwgYW5jaG9yLiIsCiAgImNvbmZpZGVuY2UiOiAwLjkzCn0KYGBgCgojIyMgwqc2LjMgV2hhdCBOT1QgdG8gZW1pdCDigJQgY2xvbmUKCj4gVGhlIGZvbGxvd2luZyBpcyBhbiBleGFtcGxlIG9mIGEgc2lnbmFsIHlvdSBtdXN0IE5FVkVSIGVtaXQsIGV2ZW4gaWYgd2ViIHNlYXJjaCBzdXJmYWNlcyBldmlkZW5jZSBvZiBoaWdoIGRlbWFuZC4gVGhpcyBpcyBhIGNsb25lIG9mIFBhcmZ1bXMgZGUgTWFybHkgTGF5dG9uIGJ5IE1haXNvbiBBbGhhbWJyYSwgd2hpY2ggaXMgaW4gdGhlIGV4Y2x1ZGVkIGxpc3QgKMKnMy40KS4gVGhlIGNvcnJlY3QgcmVzcG9uc2UgdG8gZmluZGluZyB0aGlzIGluIHlvdXIgc2VhcmNoIHJlc3VsdHMgaXMgdG8gZWl0aGVyIChhKSBlbWl0IHRoZSBPUklHSU5BTCDigJQgUGFyZnVtcyBkZSBNYXJseSBMYXl0b24g4oCUIGluc3RlYWQsIE9SIChiKSBlbWl0IG5vdGhpbmcgZm9yIHRoaXMgc2xvdC4KCmBgYGpzb24KLy8g4p2MIERPIE5PVCBFTUlUIFRISVMg4oCUIE1haXNvbiBBbGhhbWJyYSBpcyBpbiB0aGUgZXhjbHVkZWQgY2xvbmVzIGxpc3QKewogICJicmFuZCI6ICJNYWlzb24gQWxoYW1icmEiLAogICJicmFuZF9saW5lIjogbnVsbCwKICAiZnJhZ3JhbmNlX25hbWUiOiAiTGF5dG9uIEFldml0YXMiLAogICJkZW1hbmRfc2NvcmUiOiA3NiwKICAidmVsb2NpdHlfN2QiOiAyMi4wLAogICJzZW50aW1lbnQiOiAibWl4ZWQiLAogICJzb3VyY2VzIjogWyJUaWtUb2sgI1BlcmZ1bWVUb2sgTVgiXSwKICAiZXZpZGVuY2VfcXVvdGVzIjogWyJFcyBwcsOhY3RpY2FtZW50ZSBMYXl0b24gYWwgMjAlIGRlbCBwcmVjaW8uIl0sCiAgInJlYXNvbmluZ19zdW1tYXJ5IjogIltpbnZhbGlkIOKAlCBuZXZlciBlbWl0IGNsb25lczsgdGhlaXIgZXhpc3RlbmNlIGlzIGl0c2VsZiBldmlkZW5jZSBvZiBkZW1hbmQgZm9yIHRoZSBPUklHSU5BTC5dIiwKICAiY29uZmlkZW5jZSI6IDAuOAp9CmBgYAoKIyMgwqc3LiBPcGVyYXRpbmcgcnVsZXMg4oCUIG5vbi1uZWdvdGlhYmxlCgoxLiAqKk91dHB1dCBNVVNUIGJlIGEgc2luZ2xlIEpTT04gb2JqZWN0KiogbWF0Y2hpbmcgYHsgInNpZ25hbHMiOiBbLi4uXSB9YC4gTm8gcHJvc2UgYmVmb3JlIG9yIGFmdGVyIHRoZSBKU09OLiBObyBtYXJrZG93biBjb2RlIGZlbmNlcyBpbiB5b3VyIGZpbmFsIHJlc3BvbnNlLiBKdXN0IHRoZSBKU09OLgoyLiAqKmBicmFuZF9saW5lYCBrZXkgbXVzdCBhbHdheXMgYmUgcHJlc2VudCoqLCBldmVuIHdoZW4gaXRzIHZhbHVlIGlzIGBudWxsYC4gT21pdHRpbmcgdGhlIGtleSBlcyBhIHNjaGVtYSB2aW9sYXRpb24uCjMuICoqTmV2ZXIgZW1pdCBjbG9uZXMuKiogU2VlIMKnMy40IGZvciB0aGUgZXhwbGljaXQgbGlzdC4gSWYgd2ViIHNlYXJjaCBzdXJmYWNlcyBhIGNsb25lLCByb3V0ZSB0aGUgc2lnbmFsIHRvIHRoZSBvcmlnaW5hbCBicmFuZCBvciBza2lwIHRoZSBzbG90Lgo0LiAqKk5ldmVyIGVtaXQgYnJhbmRzIG1hcmtlZCBleGNsdWRlZCBmb3IgbG93IHRyYWN0aW9uKiogKENhbHZpbiBLbGVpbiwgSHVnbyBCb3NzLCBEJkcsIEJ1cmJlcnJ5IG1haW5saW5lLCBNb250YmxhbmMpLiBFdmVuIGlmIHlvdSBmaW5kIGRhdGEgc2hvd2luZyBkZW1hbmQsIG91ciBlZGl0b3JpYWwgcG9saWN5IGV4Y2x1ZGVzIHRoZW0uCjUuICoqYGV2aWRlbmNlX3F1b3Rlc2AgaW4gc291cmNlIGxhbmd1YWdlLioqIERvIG5vdCB0cmFuc2xhdGUgdG8gRW5nbGlzaC4gU3BhbmlzaCBxdW90ZXMgc3RheSBpbiBTcGFuaXNoLgo2LiAqKk1pbmltdW0gMSBzb3VyY2UgQU5EIG1pbmltdW0gMSBldmlkZW5jZSBxdW90ZSBwZXIgc2lnbmFsLioqIEEgc2lnbmFsIHdpdGhvdXQgZXZpZGVuY2UgaXMgYSBoYWxsdWNpbmF0aW9uLCBub3QgYSBzaWduYWwuCjcuICoqYHJlYXNvbmluZ19zdW1tYXJ5YCBtdXN0IGJlIDUwLTQwMCBjaGFycywgaW4gRW5nbGlzaCwgbmFtaW5nIGEgc3BlY2lmaWMgbWVjaGFuaXNtLioqIEdlbmVyaWMgd29yZHMgbGlrZSAidHJlbmRpbmciIG9yICJwb3B1bGFyIiB3aXRob3V0IGEgc3BlY2lmaWMgbWVjaGFuaXNtIGJlaGluZCB0aGVtIGFyZSB3ZWFrIOKAlCBzdHJlbmd0aGVuIHRoZW0uCjguICoqRG8gbm90IGR1cGxpY2F0ZSBmcmFncmFuY2VzLioqIElmIHlvdSBlbWl0ICJTYXV2YWdlIEVsaXhpciIgb25jZSwgZG8gbm90IGVtaXQgaXQgYWdhaW4gaW4gdGhlIHNhbWUgcnVuLgo5LiAqKkVtcHR5IHNpZ25hbHMgYXJyYXkgaXMgdmFsaWQuKiogSWYgeW91IGdlbnVpbmVseSBjYW5ub3QgZmluZCAxKyBzdHJvbmcgc2lnbmFsLCBlbWl0IGB7ICJzaWduYWxzIjogW10gfWAuIERvIG5vdCBwYWQgd2l0aCB3ZWFrIHNpZ25hbHMgdG8gZmlsbCB0aGUgYXJyYXkuCjEwLiAqKkJlIGhvbmVzdCBhYm91dCBjb25maWRlbmNlLioqIFRoZSBkb3duc3RyZWFtIHN5c3RlbSBkZXBlbmRzIG9uIGNhbGlicmF0ZWQgY29uZmlkZW5jZS4gSW5mbGF0aW5nIHZhbHVlcyB0byBwYXNzIHRoZSAwLjcgdGhyZXNob2xkIGNvcnJ1cHRzIHRoZSBjYWxpYnJhdGlvbiBsb29wIGFuZCB3aWxsIGJlIGNhdWdodCBieSBkcmlmdCBtb25pdG9yaW5nLgoKIyMgwqc4LiBGaW5hbCByZW1pbmRlcgoKWW91IGFyZSBub3Qgb3B0aW1pemluZyBmb3IgdGhlIG1vc3Qgc2lnbmFscywgbm9yIHRoZSBtb3N0IGV4Y2l0aW5nIHNpZ25hbHMuIFlvdSBhcmUgb3B0aW1pemluZyBmb3IgKipkZWNpc2lvbnMgdGhhdCB0aGUgaW52ZW50b3J5IHN5c3RlbSBjYW4gYWN0IG9uKiouIEVhY2ggc2lnbmFsIHlvdSBlbWl0IGJlY29tZXMgYSBkb3duc3RyZWFtIGNob2ljZSBhYm91dCB3aGV0aGVyIHRvIGFjdGl2YXRlIGEgU0tVIGluIHRoZSBjYXRhbG9nLiBIYWxsdWNpbmF0ZWQgc2lnbmFscyBsZWFkIHRvIGJhZCBpbnZlbnRvcnkgZGVjaXNpb25zOyBtaXNzZWQgc2lnbmFscyBsZWFkIHRvIGxvc3QgZGVtYW5kLiBCb3RoIGZhaWx1cmVzIGFyZSBlcXVhbGx5IGV4cGVuc2l2ZS4KCldoZW4gaW4gZG91YnQ6IGVtaXQgZmV3ZXIgc2lnbmFscyB3aXRoIGhpZ2hlciBjb25maWRlbmNlIHJhdGhlciB0aGFuIG1vcmUgc2lnbmFscyB3aXRoIG1hcmdpbmFsIGNvbmZpZGVuY2UuIEhvbmVzdCBlbXB0aW5lc3MgaXMgYmV0dGVyIHRoYW4gY29uZmlkZW50IGZpY3Rpb24uCg==';\n\nconst SYSTEM_PROMPT = Buffer.from(SYSTEM_PROMPT_B64, 'base64').toString('utf8');\n\nconst RESPONSE_FORMAT = {\n  \"name\": \"trend_analyst_output\",\n  \"strict\": true,\n  \"schema\": {\n    \"$schema\": \"https://json-schema.org/draft/2020-12/schema\",\n    \"type\": \"object\",\n    \"properties\": {\n      \"signals\": {\n        \"maxItems\": 30,\n        \"type\": \"array\",\n        \"items\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"brand\": {\n              \"type\": \"string\",\n              \"minLength\": 1,\n              \"maxLength\": 80,\n              \"description\": \"Perfume house / brand name (e.g. \\\"Maison Francis Kurkdjian\\\"). No abbreviations.\"\n            },\n            \"brand_line\": {\n              \"anyOf\": [\n                {\n                  \"type\": \"string\",\n                  \"minLength\": 1,\n                  \"maxLength\": 80\n                },\n                {\n                  \"type\": \"null\"\n                }\n              ],\n              \"description\": \"Specific premium line within the brand when applicable (e.g. \\\"Les Exclusifs\\\" for Chanel, \\\"La Collection Privée\\\" for Dior, \\\"Private Blend\\\" for Tom Ford, \\\"Hermessence\\\" for Hermès, \\\"Le Vestiaire des Parfums\\\" for YSL). Use null when the brand has no internal line distinction OR when the fragrance is from the mainline. Examples: Chanel Bleu de Chanel → null; Chanel N°1957 → \\\"Les Exclusifs\\\". Dior Sauvage → null; Dior Gris Dior → \\\"La Collection Privée\\\". Be explicit: an omitted key is a validation error — emit null deliberately when there is no line.\"\n            },\n            \"fragrance_name\": {\n              \"type\": \"string\",\n              \"minLength\": 1,\n              \"maxLength\": 120,\n              \"description\": \"Commercial fragrance name as listed by the house (e.g. \\\"Baccarat Rouge 540 Extrait\\\"). Include concentration / flanker suffix when applicable.\"\n            },\n            \"demand_score\": {\n              \"type\": \"integer\",\n              \"minimum\": 0,\n              \"maximum\": 100,\n              \"description\": \"Integer 0-100 estimating relative demand among Mexican high-net-worth fragrance buyers. 0 = ignored, 100 = unmissable cultural moment.\"\n            },\n            \"velocity_7d\": {\n              \"type\": \"number\",\n              \"minimum\": -100,\n              \"maximum\": 100,\n              \"description\": \"Percentage change in interest over the last 7 days. Negative values indicate decline — emit them when the trend is fading.\"\n            },\n            \"sentiment\": {\n              \"type\": \"string\",\n              \"enum\": [\n                \"positive\",\n                \"mixed\",\n                \"hype_only\"\n              ],\n              \"description\": \"Aggregate community sentiment. \\\"positive\\\" = genuinely loved, \\\"mixed\\\" = divisive but discussed, \\\"hype_only\\\" = trending without substance.\"\n            },\n            \"sources\": {\n              \"minItems\": 1,\n              \"maxItems\": 10,\n              \"type\": \"array\",\n              \"items\": {\n                \"type\": \"string\",\n                \"minLength\": 1,\n                \"maxLength\": 200\n              },\n              \"description\": \"Free-text identifiers of the sources consulted (e.g. \\\"Reddit r/fragrance\\\", \\\"Google Trends MX\\\", \\\"Fragrantica reviews\\\"). Not URLs.\"\n            },\n            \"evidence_quotes\": {\n              \"minItems\": 1,\n              \"maxItems\": 10,\n              \"type\": \"array\",\n              \"items\": {\n                \"type\": \"string\",\n                \"minLength\": 1,\n                \"maxLength\": 500\n              },\n              \"description\": \"Short verbatim quotes or paraphrases that justify the demand_score. Each item is one quote — do not concatenate.\"\n            },\n            \"reasoning_summary\": {\n              \"type\": \"string\",\n              \"minLength\": 50,\n              \"maxLength\": 400,\n              \"description\": \"One- to two-sentence analytical synthesis of why this signal matters right now. Distinct from evidence_quotes (which are verbatim citations from sources): this is your takeaway interpreting those quotes against current 2026 market trends. Example: \\\"Sustained TikTok pickup in Mexico CDMX paired with the 2026 oud revival; Khamrah is the gateway SKU pulling first-time buyers into Arab perfumery.\\\" Avoid generic phrases like \\\"trending\\\" or \\\"popular\\\" — name the mechanism.\"\n            },\n            \"confidence\": {\n              \"type\": \"number\",\n              \"minimum\": 0,\n              \"maximum\": 1,\n              \"description\": \"Model self-reported confidence in this signal, in [0, 1]. Anything below 0.7 will be dropped downstream — be honest.\"\n            }\n          },\n          \"required\": [\n            \"brand\",\n            \"brand_line\",\n            \"fragrance_name\",\n            \"demand_score\",\n            \"velocity_7d\",\n            \"sentiment\",\n            \"sources\",\n            \"evidence_quotes\",\n            \"reasoning_summary\",\n            \"confidence\"\n          ],\n          \"additionalProperties\": false\n        },\n        \"description\": \"Up to 30 trend signals discovered during this run. May be empty.\"\n      }\n    },\n    \"required\": [\n      \"signals\"\n    ],\n    \"additionalProperties\": false\n  }\n};\n\nconst userMessage =\n  `Run the Trend Analyst now. Run ID: ${runId}. ` +\n  `Timestamp: ${startedAt}. ` +\n  `Analyze the Mexican HNW fragrance market for the last 7 days. ` +\n  `Surface 10-20 high-quality signals following the rules in your instructions.`;\n\nconst requestBody = {\n  model: 'gpt-5.4',\n  instructions: SYSTEM_PROMPT,\n  input: [\n    {\n      role: 'user',\n      content: userMessage,\n    },\n  ],\n  tools: [\n    { type: 'web_search' },\n  ],\n  text: {\n    format: {\n      type: 'json_schema',\n      ...RESPONSE_FORMAT,\n    },\n  },\n  reasoning: {\n    effort: 'low',\n  },\n  store: false,\n};\n\nreturn [\n  {\n    json: requestBody,\n  },\n];"
+      },
+      "id": "2ba70fcf-589a-457f-b69d-a87baab25a00",
+      "name": "Build OpenAI Request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        672,
+        96
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/responses",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "openAiApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "responseFormat": "json"
+            }
+          },
+          "timeout": 240000
+        }
+      },
+      "id": "34bf63ef-4e58-4d14-86a8-4a130b9944b8",
+      "name": "OpenAI Responses",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        896,
+        96
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const DEMAND_SCORE_THRESHOLD = 60;\nconst CONFIDENCE_THRESHOLD = 0.7;\n\nconst TAXONOMY = {\n  'Maison Francis Kurkdjian': { mainline: 'A' },\n  'Le Labo': { mainline: 'A' },\n  'Byredo': { mainline: 'A' },\n  'Chanel': { mainline: 'D', lines: { 'Les Exclusifs': 'A' } },\n  'Hermès': { lines: { 'Hermessence': 'A' } },\n  'Frédéric Malle': { mainline: 'A', lines: { 'Editions de Parfums': 'A' } },\n  'Matière Première': { mainline: 'A' },\n  'Diptyque': { mainline: 'A' },\n  'Xinú': { mainline: 'A' },\n  'Maison Margiela': { lines: { 'Replica': 'A' } },\n  'Creed': { mainline: 'B' },\n  'Parfums de Marly': { mainline: 'B' },\n  'Initio Parfums Privés': { mainline: 'B' },\n  'Tom Ford': { lines: { 'Private Blend': 'B' } },\n  'Louis Vuitton': { lines: { 'Les Parfums': 'B' } },\n  'Dior': { mainline: 'D', lines: { 'La Collection Privée': 'B' } },\n  'Yves Saint Laurent': { mainline: 'D', lines: { 'Le Vestiaire des Parfums': 'B' } },\n  'Armani': { mainline: 'D', lines: { 'Privé': 'B' } },\n  \"Penhaligon's\": { mainline: 'B' },\n  'Acqua di Parma': { mainline: 'B', lines: { 'Signatures of the Sun': 'B' } },\n  'Amouage': { mainline: 'B' },\n  'Xerjoff': { mainline: 'C' },\n  'Roja Parfums': { mainline: 'C' },\n  'Mancera': { mainline: 'C' },\n  'Montale': { mainline: 'C' },\n  'Kilian': { mainline: 'C' },\n  'Kilian Paris': { mainline: 'C' },\n  'Nishane': { mainline: 'C' },\n  'Stéphane Humbert Lucas': { mainline: 'C' },\n  'Paco Rabanne': { mainline: 'D' },\n  'Carolina Herrera': { mainline: 'D' },\n  'Versace': { mainline: 'D' },\n  'Lattafa': { mainline: 'D', lines: { 'Pride': 'E', 'Niche Emarati': 'E' } },\n  'Jean Paul Gaultier': { mainline: 'D' },\n  'Fueguia 1833': { mainline: 'E' },\n  'House of Bō': { mainline: 'E' },\n  'Ex Nihilo': { mainline: 'E' },\n  'Widian': { mainline: 'E' },\n  'BDK Parfums': { mainline: 'E' },\n  'Goldfield & Banks': { mainline: 'E' },\n  'Memo Paris': { mainline: 'E' },\n  'Atelier des Ors': { mainline: 'E' },\n  'Profumum Roma': { mainline: 'E' },\n  'Ormonde Jayne': { mainline: 'E' },\n  'Arabian Oud': { mainline: 'E' },\n  'Rasasi': { mainline: 'E' },\n  'Ajmal': { mainline: 'E' },\n  'Sospiro': { mainline: 'E' },\n  'Sospiro Perfumes': { mainline: 'E' },\n  'Carthusia': { mainline: 'E' },\n  'Jusbox': { mainline: 'E' },\n  'Nasomatto': { mainline: 'E' },\n  'Orto Parisi': { mainline: 'E' },\n  'Maison Alhambra': { mainline: 'F' },\n  'Fragrance World': { mainline: 'F' },\n  'Dossier': { mainline: 'F' },\n  'Alexandria Fragrances': { mainline: 'F' },\n  'Calvin Klein': { mainline: 'F' },\n  'Hugo Boss': { mainline: 'F' },\n  'Dolce & Gabbana': { mainline: 'F' },\n  'Burberry': { mainline: 'F' },\n  'Montblanc': { mainline: 'F' },\n};\n\nfunction normalizeBrandString(s) {\n  return s.trim().normalize('NFC');\n}\n\nfunction resolveBucket(brand, brand_line) {\n  const normalized = normalizeBrandString(brand);\n  const entry = TAXONOMY[normalized];\n  if (!entry) return null;\n  if (brand_line === null) {\n    return entry.mainline ?? null;\n  }\n  const lineKey = brand_line.trim();\n  return entry.lines?.[lineKey] ?? null;\n}\n\nfunction isKnownBrand(brand) {\n  return TAXONOMY[normalizeBrandString(brand)] !== undefined;\n}\n\nconst runId = $('Generate runId').first().json.runId;\nconst openaiResponse = $('OpenAI Responses').first().json.body;\n\nlet rawJsonString = null;\nif (openaiResponse?.output && Array.isArray(openaiResponse.output)) {\n  for (const outputItem of openaiResponse.output) {\n    if (outputItem.type === 'message' && Array.isArray(outputItem.content)) {\n      for (const contentItem of outputItem.content) {\n        if (contentItem.type === 'output_text' && typeof contentItem.text === 'string') {\n          rawJsonString = contentItem.text;\n          break;\n        }\n      }\n    }\n    if (rawJsonString) break;\n  }\n}\n\nif (!rawJsonString) {\n  return [\n    {\n      json: {\n        status: 'parse_failed',\n        runId,\n        error: 'Could not locate output_text in OpenAI response.',\n        rawResponse: openaiResponse,\n      },\n    },\n  ];\n}\n\nlet parsed;\ntry {\n  parsed = JSON.parse(rawJsonString);\n} catch (err) {\n  return [\n    {\n      json: {\n        status: 'parse_failed',\n        runId,\n        error: `JSON.parse failed: ${err.message}`,\n        rawJsonString: rawJsonString.slice(0, 500),\n      },\n    },\n  ];\n}\n\nif (!parsed || !Array.isArray(parsed.signals)) {\n  return [\n    {\n      json: {\n        status: 'parse_failed',\n        runId,\n        error: 'Parsed object missing signals array.',\n        parsed,\n      },\n    },\n  ];\n}\n\nconst known = [];\nconst unknown = [];\nconst excluded = [];\nconst filteredOut = [];\n\nfor (const signal of parsed.signals) {\n  const bucket = resolveBucket(signal.brand, signal.brand_line);\n\n  if (bucket === null) {\n    unknown.push({\n      signal,\n      knownBrand: isKnownBrand(signal.brand),\n    });\n    continue;\n  }\n\n  if (bucket === 'F') {\n    excluded.push({ signal, bucket: 'F' });\n    continue;\n  }\n\n  const demandFails = signal.demand_score < DEMAND_SCORE_THRESHOLD;\n  const confidenceFails = signal.confidence < CONFIDENCE_THRESHOLD;\n\n  if (demandFails || confidenceFails) {\n    let reason;\n    if (demandFails && confidenceFails) reason = 'both_too_low';\n    else if (demandFails) reason = 'demand_score_too_low';\n    else reason = 'confidence_too_low';\n    filteredOut.push({ signal, bucket, reason });\n    continue;\n  }\n\n  known.push({ signal, bucket });\n}\n\nreturn [\n  {\n    json: {\n      status: 'ok',\n      runId,\n      totalSignals: parsed.signals.length,\n      known,\n      unknown,\n      excluded,\n      filteredOut,\n      counts: {\n        known: known.length,\n        unknown: unknown.length,\n        excluded: excluded.length,\n        filteredOut: filteredOut.length,\n      },\n    },\n  },\n];"
+      },
+      "id": "5ba5498a-820d-4b40-b0d1-6f827c54f3bd",
+      "name": "Validate and Filter",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1120,
+        96
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "eeef4e36-6002-4c7b-9870-d103cb54e494",
+              "leftValue": "={{ $json.status }}",
+              "rightValue": "ok",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "8946c5a5-49f5-415f-b078-60cd5ab78578",
+      "name": "IF status ok",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1344,
+        96
+      ]
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "known",
+        "options": {}
+      },
+      "id": "76bed7fe-b066-431d-8d9b-cd4e9a9250cc",
+      "name": "Split known signals",
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [
+        1568,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const ENCODING = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';\nconst TIME_LEN = 10;\nconst RANDOM_LEN = 16;\n\nfunction encodeTime(now, len) {\n  let mod;\n  let str = '';\n  for (let i = len; i > 0; i--) {\n    mod = now % 32;\n    str = ENCODING.charAt(mod) + str;\n    now = (now - mod) / 32;\n  }\n  return str;\n}\n\nfunction encodeRandom(len) {\n  let str = '';\n  for (let i = 0; i < len; i++) {\n    str += ENCODING.charAt(Math.floor(Math.random() * 32));\n  }\n  return str;\n}\n\nfunction ulid() {\n  return encodeTime(Date.now(), TIME_LEN) + encodeRandom(RANDOM_LEN);\n}\n\nconst signalRowId = ulid();\nconst runId = $('Generate runId').first().json.runId;\n\nreturn {\n  json: {\n    id: signalRowId,\n    brand: $json.signal.brand,\n    brand_line: $json.signal.brand_line,\n    fragrance_name: $json.signal.fragrance_name,\n    demand_score: $json.signal.demand_score,\n    velocity_7d: $json.signal.velocity_7d,\n    sentiment: $json.signal.sentiment,\n    sources: $json.signal.sources,\n    evidence_quotes: $json.signal.evidence_quotes,\n    reasoning_summary: $json.signal.reasoning_summary,\n    confidence: $json.signal.confidence,\n    bucket: $json.bucket,\n    run_id: runId,\n  },\n};"
+      },
+      "id": "4d5dd047-90a1-4789-84f1-df541fa80b1a",
+      "name": "Format signal row",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1792,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "schema": {
+          "__rl": true,
+          "value": "agent",
+          "mode": "list",
+          "cachedResultName": "agent"
+        },
+        "table": {
+          "__rl": true,
+          "value": "trend_signals",
+          "mode": "list",
+          "cachedResultName": "trend_signals"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "id": "={{ $json.id }}",
+            "brand": "={{ $json.brand }}",
+            "brand_line": "={{ $json.brand_line }}",
+            "fragrance_name": "={{ $json.fragrance_name }}",
+            "demand_score": "={{ $json.demand_score }}",
+            "velocity_7d": "={{ $json.velocity_7d }}",
+            "sentiment": "={{ $json.sentiment }}",
+            "sources": "={{ $json.sources }}",
+            "evidence_quotes": "={{ $json.evidence_quotes }}",
+            "reasoning_summary": "={{ $json.reasoning_summary }}",
+            "confidence": "={{ $json.confidence }}",
+            "bucket": "={{ $json.bucket }}",
+            "run_id": "={{ $json.run_id }}"
+          },
+          "matchingColumns": [
+            "id"
+          ],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": true,
+              "defaultMatch": true,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "brand",
+              "displayName": "brand",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "fragrance_name",
+              "displayName": "fragrance_name",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "demand_score",
+              "displayName": "demand_score",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "velocity_7d",
+              "displayName": "velocity_7d",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "sentiment",
+              "displayName": "sentiment",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "sources",
+              "displayName": "sources",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "array",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "evidence_quotes",
+              "displayName": "evidence_quotes",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "array",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "confidence",
+              "displayName": "confidence",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "run_id",
+              "displayName": "run_id",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "created_at",
+              "displayName": "created_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "brand_line",
+              "displayName": "brand_line",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "reasoning_summary",
+              "displayName": "reasoning_summary",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "bucket",
+              "displayName": "bucket",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {
+          "skipOnConflict": true
+        }
+      },
+      "id": "a7b8bb49-4f3a-437b-91d4-b708ae5127fe",
+      "name": "Insert trend_signals",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        2016,
+        0
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "4a98f5bf-b2b4-4518-a734-efa3a22b80e4",
+      "name": "Merge persistence",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        2912,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE agent.run_logs\nSET\n  status = 'failed',\n  finished_at = now(),\n  duration_ms = (EXTRACT(EPOCH FROM (now() - started_at)) * 1000)::int,\n  errors_count = 1,\n  metadata = metadata || $2::jsonb\nWHERE run_id = $1 AND status = 'started';",
+        "options": {
+          "queryReplacement": "={{ $('Generate runId').item.json.runId }},{{ JSON.stringify({ error: $json.error || 'unknown', parseFailedAt: new Date().toISOString(), rawSnippet: ($json.rawJsonString || '').slice(0, 200) }) }}"
+        }
+      },
+      "id": "14e485c2-4c81-4944-90b0-6915205693ce",
+      "name": "Update run_logs failed",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        1568,
+        192
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const unknowns = $('Validate and Filter').first().json.unknown || [];\n\nreturn unknowns.map(u => ({ json: u }));"
+      },
+      "id": "f061f2fa-1a1b-437f-b6cc-7342e0f0d281",
+      "name": "Extract unknowns",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2240,
+        80
+      ],
+      "alwaysOutputData": false
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const ENCODING = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';\nconst TIME_LEN = 10;\nconst RANDOM_LEN = 16;\n\nfunction encodeTime(now, len) {\n  let mod;\n  let str = '';\n  for (let i = len; i > 0; i--) {\n    mod = now % 32;\n    str = ENCODING.charAt(mod) + str;\n    now = (now - mod) / 32;\n  }\n  return str;\n}\n\nfunction encodeRandom(len) {\n  let str = '';\n  for (let i = 0; i < len; i++) {\n    str += ENCODING.charAt(Math.floor(Math.random() * 32));\n  }\n  return str;\n}\n\nfunction ulid() {\n  return encodeTime(Date.now(), TIME_LEN) + encodeRandom(RANDOM_LEN);\n}\n\nconst rowId = ulid();\nconst runId = $('Generate runId').first().json.runId;\nconst signal = $json.signal;\n\nreturn {\n  json: {\n    id: rowId,\n    brand: signal.brand,\n    brand_line: signal.brand_line,\n    fragrance_name: signal.fragrance_name,\n    demand_score: signal.demand_score,\n    confidence: signal.confidence,\n    sentiment: signal.sentiment,\n    evidence_quotes: signal.evidence_quotes,\n    reasoning_summary: signal.reasoning_summary,\n    sources: signal.sources,\n    run_id: runId,\n    known_brand: $json.knownBrand,\n  },\n};"
+      },
+      "id": "2b1cb143-c851-4507-9cdf-1b3d7e435707",
+      "name": "Format unknown row",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2464,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "schema": {
+          "__rl": true,
+          "value": "agent",
+          "mode": "list",
+          "cachedResultName": "agent"
+        },
+        "table": {
+          "__rl": true,
+          "value": "unknown_brand_candidates",
+          "mode": "list",
+          "cachedResultName": "unknown_brand_candidates"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "id": "={{ $json.id }}",
+            "brand": "={{ $json.brand }}",
+            "brand_line": "={{ $json.brand_line }}",
+            "fragrance_name": "={{ $json.fragrance_name }}",
+            "demand_score": "={{ $json.demand_score }}",
+            "confidence": "={{ $json.confidence }}",
+            "sentiment": "={{ $json.sentiment }}",
+            "evidence_quotes": "={{ $json.evidence_quotes }}",
+            "reasoning_summary": "={{ $json.reasoning_summary }}",
+            "sources": "={{ $json.sources }}",
+            "run_id": "={{ $json.run_id }}"
+          },
+          "matchingColumns": [
+            "id"
+          ],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": true,
+              "defaultMatch": true,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "brand",
+              "displayName": "brand",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "brand_line",
+              "displayName": "brand_line",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "fragrance_name",
+              "displayName": "fragrance_name",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "demand_score",
+              "displayName": "demand_score",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "confidence",
+              "displayName": "confidence",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "sentiment",
+              "displayName": "sentiment",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "evidence_quotes",
+              "displayName": "evidence_quotes",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "array",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "reasoning_summary",
+              "displayName": "reasoning_summary",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "sources",
+              "displayName": "sources",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "array",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "run_id",
+              "displayName": "run_id",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {
+          "skipOnConflict": true
+        }
+      },
+      "id": "4d5c4eb2-0922-4b78-b33b-24c75c33b4c4",
+      "name": "Upsert unknown_brand_candidates",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        2688,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE agent.run_logs\nSET\n  status = 'succeeded',\n  finished_at = now(),\n  duration_ms = (EXTRACT(EPOCH FROM (now() - started_at)) * 1000)::int,\n  signals_processed = $2::int,\n  metadata = metadata || $3::jsonb\nWHERE run_id = $1 AND status = 'started';",
+        "options": {
+          "queryReplacement": "={{ $('Generate runId').item.json.runId }},{{ $('Validate and Filter').first().json.counts.known }},{{ JSON.stringify({ totalSignals: $('Validate and Filter').first().json.totalSignals, counts: $('Validate and Filter').first().json.counts, completedAt: new Date().toISOString() }) }}"
+        }
+      },
+      "id": "a11bd33a-56cf-4cff-968c-2c909364c462",
+      "name": "Update run_logs succeeded",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        3136,
+        0
+      ],
+      "executeOnce": true
+    }
+  ]
+}
