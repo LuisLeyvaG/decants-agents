@@ -1,0 +1,31 @@
+{
+  "name": "@leyvascents/agents-workflows",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Workflows de n8n versionados como código + schemas Zod + system prompts del sistema agéntico de Leyva Scents.",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build:schema": "tsx scripts/build-output-schema.ts",
+    "pretest": "npm run build:schema",
+    "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js --passWithNoTests",
+    "test:watch": "node --experimental-vm-modules node_modules/jest/bin/jest.js --watch --passWithNoTests",
+    "typecheck": "tsc --noEmit",
+    "lint": "echo 'lint placeholder — TODO: configurar eslint cuando haya código TS'"
+  },
+  "dependencies": {
+    "ulid": "^2.4.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/jest": "^29.5.13",
+    "@types/node": "^20.12.11",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.2.5",
+    "ts-node": "^10.9.2",
+    "tsx": "^4.22.3",
+    "typescript": "^5.6.2"
+  }
+}

@@ -85,6 +85,11 @@ Schema completo en [postgres/init/01-schema.sql](postgres/init/01-schema.sql).
 
 ## NO está en este repo
 
-- Los flujos de n8n (viven en el repo de infra y se importan al UI de n8n).
 - El código de los agentes (vive en n8n como nodos AI Agent + tools).
 - Caddy o cualquier reverse proxy (no se expone nada de aquí a internet).
+
+## Workflows de n8n
+
+Los workflows de n8n viven en [`workflows/`](workflows/) de este mismo repo,
+versionados como JSON exportado + schemas TypeScript + system prompts en
+Markdown. Ver `workflows/README.md` para la convención completa.

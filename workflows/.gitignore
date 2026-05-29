@@ -1,0 +1,12 @@
+node_modules/
+dist/
+*.log
+.env
+.env.local
+coverage/
+
+# Throwaway artifacts for n8n UI copy-paste (regenerable from system-prompt.md).
+# The base64 prompt is embedded directly inside the workflow JSON's
+# "Build OpenAI Request" Code node, so these helper files are not source.
+*.b64.txt
+*.escaped.json

@@ -1,0 +1,117 @@
+{
+  "name": "trend_analyst_output",
+  "strict": true,
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "signals": {
+        "maxItems": 30,
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "brand": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 80,
+              "description": "Perfume house / brand name (e.g. \"Maison Francis Kurkdjian\"). No abbreviations."
+            },
+            "brand_line": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 80
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Specific premium line within the brand when applicable (e.g. \"Les Exclusifs\" for Chanel, \"La Collection Privée\" for Dior, \"Private Blend\" for Tom Ford, \"Hermessence\" for Hermès, \"Le Vestiaire des Parfums\" for YSL). Use null when the brand has no internal line distinction OR when the fragrance is from the mainline. Examples: Chanel Bleu de Chanel → null; Chanel N°1957 → \"Les Exclusifs\". Dior Sauvage → null; Dior Gris Dior → \"La Collection Privée\". Be explicit: an omitted key is a validation error — emit null deliberately when there is no line."
+            },
+            "fragrance_name": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 120,
+              "description": "Commercial fragrance name as listed by the house (e.g. \"Baccarat Rouge 540 Extrait\"). Include concentration / flanker suffix when applicable."
+            },
+            "demand_score": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 100,
+              "description": "Integer 0-100 estimating relative demand among Mexican high-net-worth fragrance buyers. 0 = ignored, 100 = unmissable cultural moment."
+            },
+            "velocity_7d": {
+              "type": "number",
+              "minimum": -100,
+              "maximum": 100,
+              "description": "Percentage change in interest over the last 7 days. Negative values indicate decline — emit them when the trend is fading."
+            },
+            "sentiment": {
+              "type": "string",
+              "enum": [
+                "positive",
+                "mixed",
+                "hype_only"
+              ],
+              "description": "Aggregate community sentiment. \"positive\" = genuinely loved, \"mixed\" = divisive but discussed, \"hype_only\" = trending without substance."
+            },
+            "sources": {
+              "minItems": 1,
+              "maxItems": 10,
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              },
+              "description": "Free-text identifiers of the sources consulted (e.g. \"Reddit r/fragrance\", \"Google Trends MX\", \"Fragrantica reviews\"). Not URLs."
+            },
+            "evidence_quotes": {
+              "minItems": 1,
+              "maxItems": 10,
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 500
+              },
+              "description": "Short verbatim quotes or paraphrases that justify the demand_score. Each item is one quote — do not concatenate."
+            },
+            "reasoning_summary": {
+              "type": "string",
+              "minLength": 50,
+              "maxLength": 400,
+              "description": "One- to two-sentence analytical synthesis of why this signal matters right now. Distinct from evidence_quotes (which are verbatim citations from sources): this is your takeaway interpreting those quotes against current 2026 market trends. Example: \"Sustained TikTok pickup in Mexico CDMX paired with the 2026 oud revival; Khamrah is the gateway SKU pulling first-time buyers into Arab perfumery.\" Avoid generic phrases like \"trending\" or \"popular\" — name the mechanism."
+            },
+            "confidence": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1,
+              "description": "Model self-reported confidence in this signal, in [0, 1]. Anything below 0.7 will be dropped downstream — be honest."
+            }
+          },
+          "required": [
+            "brand",
+            "brand_line",
+            "fragrance_name",
+            "demand_score",
+            "velocity_7d",
+            "sentiment",
+            "sources",
+            "evidence_quotes",
+            "reasoning_summary",
+            "confidence"
+          ],
+          "additionalProperties": false
+        },
+        "description": "Up to 30 trend signals discovered during this run. May be empty."
+      }
+    },
+    "required": [
+      "signals"
+    ],
+    "additionalProperties": false
+  }
+}
