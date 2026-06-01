@@ -17,6 +17,7 @@
   },
   "dependencies": {
     "ulid": "^2.4.0",
+    "undici": "^6.26.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {
