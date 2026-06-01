@@ -6,7 +6,12 @@
  * all must throw.
  */
 
-import { computeDedupHash, normalizeHandle, normalizePhone } from '../scripts/dedup.js'
+import {
+  computeDedupHash,
+  normalizeDomain,
+  normalizeHandle,
+  normalizePhone,
+} from '../scripts/dedup.js'
 
 describe('normalizePhone', () => {
   it('strips +52, spaces, dashes and parentheses to a 10-digit number', () => {
@@ -46,6 +51,35 @@ describe('normalizeHandle', () => {
 
   it('treats @handle and handle identically', () => {
     expect(normalizeHandle('@leyvascents')).toBe(normalizeHandle('leyvascents'))
+  })
+})
+
+describe('normalizeDomain', () => {
+  it.each([
+    ['https://leyvascents.mx', 'leyvascents.mx'],
+    ['http://leyvascents.mx', 'leyvascents.mx'],
+    ['https://www.leyvascents.mx', 'leyvascents.mx'],
+    ['http://www.leyvascents.mx/', 'leyvascents.mx'],
+    ['https://www.leyvascents.mx/catalog?page=2', 'leyvascents.mx'],
+    ['leyvascents.mx/catalog', 'leyvascents.mx'],
+    ['HTTPS://WWW.LeyvaScents.MX/Catalog', 'leyvascents.mx'],
+    ['https://leyvascents.mx:8443/catalog', 'leyvascents.mx'],
+  ])('normalizes %s to %s', (input, expected) => {
+    expect(normalizeDomain(input)).toBe(expected)
+  })
+
+  it('collapses http/https, www and trailing-slash variants to one domain', () => {
+    const variants = [
+      'https://leyvascents.mx',
+      'http://www.leyvascents.mx/',
+      'https://www.leyvascents.mx/catalog',
+    ].map(normalizeDomain)
+    expect(new Set(variants).size).toBe(1)
+  })
+
+  it('returns "" for an empty string', () => {
+    expect(normalizeDomain('')).toBe('')
+    expect(normalizeDomain('   ')).toBe('')
   })
 })
 
@@ -91,11 +125,46 @@ describe('computeDedupHash', () => {
     expect(computeDedupHash('5512345678', null)).not.toBe(computeDedupHash('5599999999', null))
   })
 
-  it('throws when both identifiers are null', () => {
+  it('throws when both identifiers are null (and no catalog URL)', () => {
     expect(() => computeDedupHash(null, null)).toThrow(/cannot deduplicate/i)
   })
 
-  it('throws when both identifiers normalize to empty', () => {
+  it('throws when both identifiers normalize to empty (and no catalog URL)', () => {
     expect(() => computeDedupHash('---', '@')).toThrow(/cannot deduplicate/i)
+  })
+
+  // --- v3: catalog domain as the last-resort (dom:) identifier -------------
+
+  it('falls back to the domain only when there is no phone nor handle', () => {
+    const domKeyed = computeDedupHash(null, null, 'https://leyvascents.mx/catalog')
+    expect(domKeyed).toMatch(/^[0-9a-f]{64}$/)
+    // Different namespace ("dom:") than tel:/ig: → distinct from those keys.
+    expect(domKeyed).not.toBe(computeDedupHash('5512345678', null))
+    expect(domKeyed).not.toBe(computeDedupHash(null, 'leyvascents'))
+  })
+
+  it('keys the domain across http/https/www/path variants identically', () => {
+    const a = computeDedupHash(null, null, 'https://leyvascents.mx')
+    const b = computeDedupHash(null, null, 'http://www.leyvascents.mx/catalog?page=2')
+    expect(a).toBe(b)
+  })
+
+  it('does NOT change existing tel:/ig: keys when a catalog URL is also present', () => {
+    // Strict priority tel > ig > dom: adding catalogUrl is additive, so a
+    // previously-computed hash stays stable.
+    expect(computeDedupHash('5512345678', null, 'https://leyvascents.mx')).toBe(
+      computeDedupHash('5512345678', null),
+    )
+    expect(computeDedupHash(null, '@leyvascents', 'https://leyvascents.mx')).toBe(
+      computeDedupHash(null, 'leyvascents'),
+    )
+  })
+
+  it('GUARDRAIL: throws only when ALL THREE identifiers are empty', () => {
+    // All three empty → still throws.
+    expect(() => computeDedupHash(null, null, null)).toThrow(/cannot deduplicate/i)
+    expect(() => computeDedupHash('---', '@', '   ')).toThrow(/cannot deduplicate/i)
+    // A catalog URL alone is enough to deduplicate → must NOT throw.
+    expect(() => computeDedupHash(null, null, 'https://leyvascents.mx')).not.toThrow()
   })
 })

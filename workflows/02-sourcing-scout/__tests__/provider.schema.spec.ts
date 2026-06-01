@@ -1,178 +1,150 @@
 /**
- * Unit tests for the Sourcing Scout Zod contract.
+ * Unit tests for the Sourcing Scout Zod contract (v3 web-discovery shape).
  *
- * Covers structural validation for both ProviderRawSchema and
- * ProviderScoredSchema — valid baselines plus the boundary rejections called
- * out in the sprint spec. No DB, no network.
+ * Covers structural validation for the single `ProviderSchema`: a valid
+ * baseline, the nullable fields (source_id, whatsapp, instagram_handle,
+ * trust_fulfillment, last_verified_at), the required fields (evidence_urls,
+ * discovery_query, confidence, trust_quality), and the boundary rejections.
+ * No DB, no network.
  */
 
-import {
-  ProviderRawSchema,
-  ProviderScoredSchema,
-  type ProviderRaw,
-  type ProviderScored,
-} from '../schemas/provider.schema.js'
+import { ProviderSchema, type Provider } from '../schemas/provider.schema.js'
 
-const makeRaw = (overrides: Partial<ProviderRaw> = {}): ProviderRaw => ({
-  source: 'maps',
-  source_id: 'ChIJ-place-id-123',
+const makeProvider = (overrides: Partial<Provider> = {}): Provider => ({
+  source: 'web',
+  source_id: null,
   name: 'Leyva Scents',
-  whatsapp: '5512345678',
-  instagram_handle: 'leyvascents',
   catalog_url: 'https://leyvascents.mx/catalog',
-  rating: 4.7,
-  reviews_count: 320,
-  account_age_days: 540,
-  detected_brands: ['MFK', 'Creed'],
-  has_physical_address: true,
-  refund_policy_explicit: true,
-  raw_signals: { placeTypes: ['perfume_store'] },
-  ...overrides,
-})
-
-const makeScored = (overrides: Partial<ProviderScored> = {}): ProviderScored => ({
-  source: 'maps',
-  source_id: 'ChIJ-place-id-123',
-  name: 'Leyva Scents',
   whatsapp: '5512345678',
   instagram_handle: 'leyvascents',
-  reputation_score: 0.82,
-  brand_overlap_score: 0.2,
-  response_speed_score: null,
-  physical_presence_score: 1,
-  refund_policy_score: 1,
-  composite_score: 0.74,
-  tier: 2,
-  avg_whatsapp_ms: null,
+  evidence_urls: ['https://leyvascents.mx/catalog', 'https://leyvascents.mx/returns'],
+  discovery_query: 'decants premium CDMX envío',
+  confidence: 0.82,
+  trust_quality: 0.74,
+  trust_fulfillment: null,
   last_verified_at: null,
   status: 'active',
-  catalog_url: 'https://leyvascents.mx/catalog',
   dedup_hash: 'deadbeef',
   ...overrides,
 })
 
-describe('ProviderRawSchema — valid', () => {
-  it('accepts a fully populated record', () => {
-    expect(ProviderRawSchema.safeParse(makeRaw()).success).toBe(true)
+describe('ProviderSchema — valid', () => {
+  it('accepts a fully populated baseline record', () => {
+    expect(ProviderSchema.safeParse(makeProvider()).success).toBe(true)
   })
 
-  it('accepts nullable fields set to null', () => {
-    const result = ProviderRawSchema.safeParse(
-      makeRaw({
+  it('accepts the nullable fields set to null', () => {
+    const result = ProviderSchema.safeParse(
+      makeProvider({
+        source_id: null,
         whatsapp: null,
         instagram_handle: null,
-        catalog_url: null,
-        rating: null,
-        reviews_count: null,
-        account_age_days: null,
+        trust_fulfillment: null,
+        last_verified_at: null,
       }),
     )
     expect(result.success).toBe(true)
   })
 
-  it('accepts an empty detected_brands array', () => {
-    expect(ProviderRawSchema.safeParse(makeRaw({ detected_brands: [] })).success).toBe(true)
+  it('accepts a numeric trust_fulfillment in [0,1]', () => {
+    expect(ProviderSchema.safeParse(makeProvider({ trust_fulfillment: 0.5 })).success).toBe(true)
+  })
+
+  it('accepts an ISO last_verified_at', () => {
+    expect(
+      ProviderSchema.safeParse(makeProvider({ last_verified_at: '2026-05-31T12:00:00.000Z' }))
+        .success,
+    ).toBe(true)
+  })
+
+  it('accepts an empty evidence_urls array structurally (entry rule lives in validateAndFilter)', () => {
+    // The Zod contract only enforces type (array of URLs); the "non-empty"
+    // business rule is enforced downstream by validateAndFilter, not here.
+    expect(ProviderSchema.safeParse(makeProvider({ evidence_urls: [] })).success).toBe(true)
+  })
+
+  it.each(['active', 'inactive', 'suspended'] as const)('accepts status %s', (status) => {
+    expect(ProviderSchema.safeParse(makeProvider({ status })).success).toBe(true)
   })
 })
 
-describe('ProviderRawSchema — invalid', () => {
-  it('rejects a source outside the enum', () => {
-    const result = ProviderRawSchema.safeParse(makeRaw({ source: 'tiktok' as never }))
+describe('ProviderSchema — invalid', () => {
+  it('rejects a source outside the enum (v3 is web-only)', () => {
+    const result = ProviderSchema.safeParse(makeProvider({ source: 'maps' as never }))
     expect(result.success).toBe(false)
     if (!result.success) {
       expect(result.error.issues.map((i) => i.path)).toContainEqual(['source'])
     }
   })
 
-  it('rejects a rating above 5', () => {
-    const result = ProviderRawSchema.safeParse(makeRaw({ rating: 5.5 }))
-    expect(result.success).toBe(false)
-    if (!result.success) {
-      expect(result.error.issues.map((i) => i.path)).toContainEqual(['rating'])
-    }
+  it('rejects a non-URL catalog_url', () => {
+    expect(ProviderSchema.safeParse(makeProvider({ catalog_url: 'not-a-url' })).success).toBe(false)
   })
 
-  it('rejects a rating below 0', () => {
-    expect(ProviderRawSchema.safeParse(makeRaw({ rating: -1 })).success).toBe(false)
-  })
-
-  it('rejects a negative reviews_count', () => {
-    expect(ProviderRawSchema.safeParse(makeRaw({ reviews_count: -5 })).success).toBe(false)
-  })
-
-  it('rejects a non-integer reviews_count', () => {
-    expect(ProviderRawSchema.safeParse(makeRaw({ reviews_count: 12.5 })).success).toBe(false)
-  })
-
-  it('rejects an empty name', () => {
-    expect(ProviderRawSchema.safeParse(makeRaw({ name: '   ' })).success).toBe(false)
-  })
-})
-
-describe('ProviderScoredSchema — valid', () => {
-  it('accepts a baseline scored record', () => {
-    expect(ProviderScoredSchema.safeParse(makeScored()).success).toBe(true)
-  })
-
-  it('accepts response_speed_score = null (Twilio deferred)', () => {
-    expect(ProviderScoredSchema.safeParse(makeScored({ response_speed_score: null })).success).toBe(
-      true,
-    )
-  })
-
-  it('accepts a numeric response_speed_score in [0,1] (future v2)', () => {
-    expect(ProviderScoredSchema.safeParse(makeScored({ response_speed_score: 0.5 })).success).toBe(
-      true,
-    )
-  })
-
-  it('accepts an ISO last_verified_at', () => {
-    const result = ProviderScoredSchema.safeParse(
-      makeScored({ last_verified_at: '2026-05-29T12:00:00.000Z' }),
-    )
-    expect(result.success).toBe(true)
-  })
-
-  it.each([1, 2, 3] as const)('accepts tier %i', (tier) => {
-    expect(ProviderScoredSchema.safeParse(makeScored({ tier })).success).toBe(true)
-  })
-})
-
-describe('ProviderScoredSchema — invalid', () => {
-  it('rejects a score dimension above 1', () => {
-    expect(ProviderScoredSchema.safeParse(makeScored({ reputation_score: 1.2 })).success).toBe(
+  it('rejects a null catalog_url (NOT NULL in v3)', () => {
+    expect(ProviderSchema.safeParse(makeProvider({ catalog_url: null as never })).success).toBe(
       false,
     )
   })
 
-  it('rejects a score dimension below 0', () => {
-    expect(ProviderScoredSchema.safeParse(makeScored({ brand_overlap_score: -0.1 })).success).toBe(
+  it('rejects a non-URL entry inside evidence_urls', () => {
+    expect(
+      ProviderSchema.safeParse(makeProvider({ evidence_urls: ['https://ok.mx', 'nope'] })).success,
+    ).toBe(false)
+  })
+
+  it('rejects a missing/undefined discovery_query (required)', () => {
+    expect(
+      ProviderSchema.safeParse(makeProvider({ discovery_query: undefined as never })).success,
+    ).toBe(false)
+  })
+
+  it('rejects an empty discovery_query', () => {
+    expect(ProviderSchema.safeParse(makeProvider({ discovery_query: '' })).success).toBe(false)
+  })
+
+  it('rejects a null confidence (required)', () => {
+    expect(ProviderSchema.safeParse(makeProvider({ confidence: null as never })).success).toBe(
       false,
     )
   })
 
-  it('rejects a composite_score outside [0,1]', () => {
-    expect(ProviderScoredSchema.safeParse(makeScored({ composite_score: 1.5 })).success).toBe(false)
+  it('rejects a confidence outside [0,1]', () => {
+    expect(ProviderSchema.safeParse(makeProvider({ confidence: 1.2 })).success).toBe(false)
+    expect(ProviderSchema.safeParse(makeProvider({ confidence: -0.1 })).success).toBe(false)
   })
 
-  it('rejects a tier outside 1|2|3', () => {
-    expect(ProviderScoredSchema.safeParse(makeScored({ tier: 4 as never })).success).toBe(false)
+  it('rejects a null trust_quality (required)', () => {
+    expect(ProviderSchema.safeParse(makeProvider({ trust_quality: null as never })).success).toBe(
+      false,
+    )
+  })
+
+  it('rejects a trust_quality outside [0,1]', () => {
+    expect(ProviderSchema.safeParse(makeProvider({ trust_quality: 1.5 })).success).toBe(false)
+  })
+
+  it('rejects a trust_fulfillment outside [0,1] when not null', () => {
+    expect(ProviderSchema.safeParse(makeProvider({ trust_fulfillment: 1.5 })).success).toBe(false)
   })
 
   it('rejects a status outside the enum', () => {
-    expect(ProviderScoredSchema.safeParse(makeScored({ status: 'banned' as never })).success).toBe(
+    expect(ProviderSchema.safeParse(makeProvider({ status: 'banned' as never })).success).toBe(
       false,
     )
   })
 
+  it('rejects an empty name', () => {
+    expect(ProviderSchema.safeParse(makeProvider({ name: '   ' })).success).toBe(false)
+  })
+
   it('rejects an empty dedup_hash', () => {
-    expect(ProviderScoredSchema.safeParse(makeScored({ dedup_hash: '' })).success).toBe(false)
+    expect(ProviderSchema.safeParse(makeProvider({ dedup_hash: '' })).success).toBe(false)
   })
 
   it('rejects a non-ISO last_verified_at', () => {
     expect(
-      ProviderScoredSchema.safeParse(makeScored({ last_verified_at: 'yesterday' as never }))
-        .success,
+      ProviderSchema.safeParse(makeProvider({ last_verified_at: 'yesterday' as never })).success,
     ).toBe(false)
   })
 })
