@@ -9,7 +9,8 @@
   },
   "scripts": {
     "build:schema": "tsx scripts/build-output-schema.ts",
-    "pretest": "npm run build:schema",
+    "build:prompt": "tsx scripts/build-prompt.ts",
+    "pretest": "npm run build:schema && npm run build:prompt",
     "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js --passWithNoTests",
     "test:watch": "node --experimental-vm-modules node_modules/jest/bin/jest.js --watch --passWithNoTests",
     "typecheck": "tsc --noEmit",

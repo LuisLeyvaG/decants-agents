@@ -17,3 +17,9 @@ coverage/
 # "Build OpenAI Request" Code node, so these helper files are not source.
 *.b64.txt
 *.escaped.json
+
+# Resolved system prompts (build artifacts). The source of truth is the
+# *.md with the {{...}} marker; the resolved *.generated.md is rebuilt by
+# `npm run build:prompt` (wired into pretest). It is ~99% identical to its
+# source, so committing it would invite editing the wrong copy → list drift.
+*.generated.md
