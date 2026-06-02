@@ -29,6 +29,14 @@ export const SOURCE_VALUES = ['web'] as const
 /** Allowed values for `status`. Mirrors the DB CHECK constraint. */
 export const STATUS_VALUES = ['active', 'inactive', 'suspended'] as const
 
+/**
+ * Hard cap on providers per run — guards against runaway LLM outputs. Single
+ * source of truth in TS for the `30` that also appears in the SO JSON schema
+ * (`sourcing-scout-output.schema.json` → `providers.maxItems`) and system-prompt
+ * §1 (`PROVIDERS_MAX_PER_RUN`). Mirror of A1's TREND_SIGNALS_MAX_PER_RUN.
+ */
+export const PROVIDERS_MAX_PER_RUN = 30
+
 const SourceSchema = z.enum(SOURCE_VALUES)
 const StatusSchema = z.enum(STATUS_VALUES)
 
@@ -135,9 +143,47 @@ export const ProviderSchema = z.object({
 })
 
 // ---------------------------------------------------------------------------
+// ProviderRawSchema — the shape the LLM actually emits (SO schema, 11 fields)
+// ---------------------------------------------------------------------------
+
+/**
+ * The raw record as produced by the model via Structured Outputs, BEFORE the
+ * workflow Code node injects the system-managed fields. It is `ProviderSchema`
+ * minus the three columns the LLM has no epistemic basis to produce:
+ *
+ *   - `dedup_hash`        — deterministic, computed by code (see scripts/dedup.ts).
+ *   - `trust_fulfillment` — null from A2; A4 measures it later.
+ *   - `last_verified_at`  — null from A2; A4 sets it later.
+ *
+ * Derived via `.omit()` so it is anti-drift BY CONSTRUCTION: it inherits every
+ * field constraint from the canonical `ProviderSchema` and can never silently
+ * diverge from it. This is the exact 1:1 counterpart of the SO JSON schema in
+ * `sourcing-scout-output.schema.json` (whose `required[]` lists these same 11
+ * fields), and it is what `validateAndFilter` (2R.3) parses per item.
+ */
+export const ProviderRawSchema = ProviderSchema.omit({
+  dedup_hash: true,
+  trust_fulfillment: true,
+  last_verified_at: true,
+})
+
+/**
+ * Root contract returned by the Sourcing Scout for a single run: an object
+ * wrapping the providers array (top-level object is required by OpenAI
+ * Structured Outputs). An empty `providers` array is valid — a run that cleared
+ * nothing through the gate is a real outcome, not an error. Mirrors A1's
+ * `TrendAnalystOutputSchema`.
+ */
+export const SourcingScoutOutputSchema = z.object({
+  providers: z.array(ProviderRawSchema).max(PROVIDERS_MAX_PER_RUN),
+})
+
+// ---------------------------------------------------------------------------
 // Inferred types
 // ---------------------------------------------------------------------------
 
 export type Source = (typeof SOURCE_VALUES)[number]
 export type Status = (typeof STATUS_VALUES)[number]
 export type Provider = z.infer<typeof ProviderSchema>
+export type ProviderRaw = z.infer<typeof ProviderRawSchema>
+export type SourcingScoutOutput = z.infer<typeof SourcingScoutOutputSchema>
