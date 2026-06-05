@@ -40,6 +40,24 @@
       válido; verifica ON DELETE CASCADE.
 - [ ] Los 3 escriben en `run_logs` con el mismo `run_id`.
 
+## Agente 2 (Sourcing Scout) — diferido post-calibración (hito 2R.4)
+
+> Calibración del scoring cerrada con prompt v3.1.1. Detalle y datos de sizing:
+> `workflows/02-sourcing-scout/CALIBRATION.md`.
+
+- [ ] **Liveness check** (sprint propio): paso async DESPUÉS de `validateAndFilter` (función
+      pura intacta); sitio caído → `filteredOut` con `reason: 'dead_site'`. Desambigua "caído"
+      de "vivo-pero-chico".
+- [ ] **Estado REVIEW / `insufficient_data`** (sprint de contrato; idealmente junto con liveness,
+      tocar el contrato una sola vez): proveedor con seguidores pero engagement no evaluable no
+      debería forzarse a accepted/filtered.
+- [ ] **Bug dedup TLD**: normalizar variantes `.com` / `.com.mx` en `dedup.ts` (mismo negocio
+      bajo dos TLDs no deduplica; testigo House of Decants → entraría dos veces en
+      `agent.providers`).
+- [ ] **Conectar A2 a n8n + producción** (workflow + activación). Antes: dimensionar coincidencia
+      TPM A2-semanal + A1-diario (500k tier 1) y considerar `reasoning.effort='low'` (ver
+      CALIBRATION.md §sizing).
+
 ## Runbook (pendiente de escribir)
 
 - [ ] Cómo rotar `leyvascents-postgres-agents-password` sin tirar data.

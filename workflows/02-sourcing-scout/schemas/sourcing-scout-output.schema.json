@@ -30,7 +30,6 @@
             },
             "catalog_url": {
               "type": "string",
-              "format": "uri",
               "description": "URL of the provider's own catalog / storefront. REQUIRED — a provider with no own functional website fails the hard gate and must not be emitted at all. Mirrors agent.providers.catalog_url (NOT NULL in v3)."
             },
             "whatsapp": {
@@ -50,8 +49,7 @@
             "evidence_urls": {
               "type": "array",
               "items": {
-                "type": "string",
-                "format": "uri"
+                "type": "string"
               },
               "description": "Flat list of URLs justifying why this provider was admitted (catalog / about / shipping / returns / policy pages). Populate it: an empty array does not meet the evidence standard. Do NOT fabricate a URL to fill it — if you genuinely have none, emit the honest empty array; the deterministic validateAndFilter (sprint 2R.3) rejects empty evidence, not this schema. Mirrors agent.providers.evidence_urls."
             },
