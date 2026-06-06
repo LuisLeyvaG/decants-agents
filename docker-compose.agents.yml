@@ -33,6 +33,25 @@ services:
     networks:
       - leyvascents-net
 
+  # Agente 2 (Sourcing Scout). Corre la lógica REAL del repo; n8n lo orquesta
+  # vía POST http://sourcing-scout:8080/run. No publica puerto al host: solo es
+  # alcanzable dentro de leyvascents-net. Lee sus secretos de Secret Manager en
+  # runtime usando el SA de la VM (ADC vía metadata server) — NO usa el .env.
+  sourcing-scout:
+    image: us-central1-docker.pkg.dev/leyva-scents/leyvascents/sourcing-scout:v2
+    container_name: sourcing-scout
+    restart: unless-stopped
+    environment:
+      GCP_PROJECT: leyva-scents
+    networks:
+      - leyvascents-net
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8080/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
 volumes:
   postgres-agents-data:
     driver: local
