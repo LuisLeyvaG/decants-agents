@@ -3,14 +3,15 @@
  * Zero real network (mirrors brightdata-fetch.spec.ts's DI convention), so
  * `npm test` never opens a socket.
  *
- * Coverage (the 7 cases agreed for the MVP):
- *   1. 2xx           → alive
- *   2. non-2xx       → dead (reason='dead_site', detail='http_<code>')
- *   3. 3xx           → dead (we do NOT follow redirects as a sign of life)
- *   4. timeout       → dead (detail='timeout')
- *   5. DNS/NXDOMAIN  → dead (detail='dns')
- *   6. URL absent    → dead (detail='no_url') WITHOUT touching the network
- *   7. allSettled    → one dead site never tumbles the batch
+ * PROVISIONAL semantics (parche A2 — see INCONCLUSIVE in liveness-check.ts):
+ * the liveness GET egresses from the VM's datacenter IP, so 403/429/timeouts are
+ * overwhelmingly WAF/IP blocks, not death. Therefore only a REAL death discards a
+ * provider; everything ambiguous is kept as `inconclusive`.
+ *
+ *   - alive        ← HTTP 2xx
+ *   - dead (drop)  ← DNS / ECONNREFUSED / 404 / 410 / no_url
+ *   - inconclusive ← 403 / 429 / 5xx / 3xx / other 4xx / timeout / TLS / error
+ *                    (KEPT, persisted with last_verified_at=null for re-check)
  */
 
 import { jest } from '@jest/globals'
@@ -18,6 +19,7 @@ import { jest } from '@jest/globals'
 import {
   checkLiveness,
   DEAD_SITE,
+  INCONCLUSIVE,
   type LivenessRequestImpl,
 } from '../liveness-check.js'
 import type { AcceptedProvider } from '../validate-and-filter.js'
@@ -80,7 +82,7 @@ describe('alive', () => {
     const { impl, urls } = fakeRequest([200])
     const result = await checkLiveness([acc('https://shop.test')], { requestImpl: impl })
 
-    expect(result.stats).toEqual({ total: 1, aliveCount: 1, deadCount: 0 })
+    expect(result.stats).toEqual({ total: 1, aliveCount: 1, inconclusiveCount: 0, deadCount: 0 })
     expect(result.alive).toHaveLength(1)
     expect(result.alive[0]).toMatchObject({
       status: 'alive',
@@ -101,66 +103,102 @@ describe('alive', () => {
 })
 
 // ---------------------------------------------------------------------------
-// 2 — non-2xx dead
+// 2 — REAL death: 404 / 410 → dead (page not found / gone)
 // ---------------------------------------------------------------------------
 
-describe('non-2xx → dead', () => {
-  it('503 → dead, dead_site, detail=http_503, httpStatus=503', async () => {
-    const { impl } = fakeRequest([503])
-    const result = await checkLiveness([acc('https://down.test')], { requestImpl: impl })
+describe('404/410 → dead (real death)', () => {
+  it('404 → dead, dead_site, detail=http_404', async () => {
+    const { impl } = fakeRequest([404])
+    const result = await checkLiveness([acc('https://gone.test')], { requestImpl: impl })
 
-    expect(result.stats).toEqual({ total: 1, aliveCount: 0, deadCount: 1 })
+    expect(result.stats).toEqual({ total: 1, aliveCount: 0, inconclusiveCount: 0, deadCount: 1 })
     expect(result.dead[0]).toMatchObject({
       status: 'dead',
-      httpStatus: 503,
+      httpStatus: 404,
       reason: DEAD_SITE,
-      detail: 'http_503',
+      detail: 'http_404',
     })
   })
 
-  it('404 → dead, detail=http_404', async () => {
-    const { impl } = fakeRequest([404])
-    const result = await checkLiveness([acc('https://gone.test')], { requestImpl: impl })
-    expect(result.dead[0]?.detail).toBe('http_404')
+  it('410 → dead, detail=http_410', async () => {
+    const { impl } = fakeRequest([410])
+    const result = await checkLiveness([acc('https://gone410.test')], { requestImpl: impl })
+    expect(result.stats.deadCount).toBe(1)
+    expect(result.dead[0]).toMatchObject({ reason: DEAD_SITE, detail: 'http_410', httpStatus: 410 })
   })
 })
 
 // ---------------------------------------------------------------------------
-// 3 — 3xx NOT treated as alive (explicit MVP decision)
+// 3 — AMBIGUOUS non-2xx → inconclusive (KEPT, not discarded) — the parche A2 core
 // ---------------------------------------------------------------------------
 
-describe('3xx → dead (redirects are not a sign of life)', () => {
-  it('301 → dead, detail=http_301', async () => {
+describe('403/429/5xx/3xx → inconclusive (kept, not dead)', () => {
+  it('403 → inconclusive (datacenter-IP WAF block, NOT dead)', async () => {
+    const { impl } = fakeRequest([403])
+    const result = await checkLiveness([acc('https://waf.test')], { requestImpl: impl })
+
+    expect(result.stats).toEqual({ total: 1, aliveCount: 0, inconclusiveCount: 1, deadCount: 0 })
+    expect(result.dead).toHaveLength(0)
+    expect(result.inconclusive[0]).toMatchObject({
+      status: 'inconclusive',
+      httpStatus: 403,
+      reason: INCONCLUSIVE,
+      detail: 'http_403',
+    })
+  })
+
+  it('429 → inconclusive', async () => {
+    const { impl } = fakeRequest([429])
+    const result = await checkLiveness([acc('https://rate.test')], { requestImpl: impl })
+    expect(result.stats.inconclusiveCount).toBe(1)
+    expect(result.inconclusive[0]).toMatchObject({ reason: INCONCLUSIVE, detail: 'http_429' })
+  })
+
+  it('503 → inconclusive (transient, not death)', async () => {
+    const { impl } = fakeRequest([503])
+    const result = await checkLiveness([acc('https://down.test')], { requestImpl: impl })
+    expect(result.stats).toEqual({ total: 1, aliveCount: 0, inconclusiveCount: 1, deadCount: 0 })
+    expect(result.inconclusive[0]).toMatchObject({ detail: 'http_503', httpStatus: 503 })
+  })
+
+  it('301 → inconclusive (redirects are not a sign of life, but not death either)', async () => {
     const { impl } = fakeRequest([301])
     const result = await checkLiveness([acc('https://moved.test')], { requestImpl: impl })
-    expect(result.stats.deadCount).toBe(1)
-    expect(result.dead[0]).toMatchObject({ reason: DEAD_SITE, detail: 'http_301', httpStatus: 301 })
+    expect(result.stats.inconclusiveCount).toBe(1)
+    expect(result.inconclusive[0]).toMatchObject({ reason: INCONCLUSIVE, detail: 'http_301', httpStatus: 301 })
   })
 })
 
 // ---------------------------------------------------------------------------
-// 4 — timeout dead
+// 4 — timeout → inconclusive (ambiguous; often IP-level interference)
 // ---------------------------------------------------------------------------
 
-describe('timeout → dead', () => {
-  it('TimeoutError → dead, detail=timeout, httpStatus=null', async () => {
+describe('timeout → inconclusive', () => {
+  it('TimeoutError → inconclusive, detail=timeout, httpStatus=null', async () => {
     const { impl } = fakeRequest([errWithCode('UND_ERR_ABORTED', 'TimeoutError')])
     const result = await checkLiveness([acc('https://slow.test')], { requestImpl: impl })
 
-    expect(result.dead[0]).toMatchObject({
-      status: 'dead',
+    expect(result.inconclusive[0]).toMatchObject({
+      status: 'inconclusive',
       httpStatus: null,
-      reason: DEAD_SITE,
+      reason: INCONCLUSIVE,
       detail: 'timeout',
     })
+    expect(result.stats.deadCount).toBe(0)
+  })
+
+  it('generic network error → inconclusive, detail=error', async () => {
+    const { impl } = fakeRequest([errWithCode('ECONNRESET')])
+    const result = await checkLiveness([acc('https://tls.test')], { requestImpl: impl })
+    expect(result.inconclusive[0]).toMatchObject({ reason: INCONCLUSIVE, detail: 'error' })
   })
 })
 
 // ---------------------------------------------------------------------------
-// 5 — DNS / NXDOMAIN dead
+// 5 — REAL death: DNS / refused → dead
 // ---------------------------------------------------------------------------
 
-describe('DNS failure → dead', () => {
+describe('DNS / refused → dead (real death)', () => {
   it('ENOTFOUND → dead, detail=dns', async () => {
     const { impl } = fakeRequest([errWithCode('ENOTFOUND')])
     const result = await checkLiveness([acc('https://nxdomain.test')], { requestImpl: impl })
@@ -206,25 +244,26 @@ describe('absent URL → dead without a request', () => {
 // ---------------------------------------------------------------------------
 
 describe('batch isolation', () => {
-  it('alive + non-2xx + thrown error → each classified, run not aborted', async () => {
-    // order: 1st alive(200), 2nd dead(500), 3rd throws (DNS)
+  it('alive + inconclusive(5xx) + dead(DNS) → each classified, run not aborted', async () => {
+    // order: 1st alive(200), 2nd inconclusive(500), 3rd dead (DNS)
     const { impl } = fakeRequest([200, 500, errWithCode('ENOTFOUND')])
     const result = await checkLiveness(
       [acc('https://a.test', 'A'), acc('https://b.test', 'B'), acc('https://c.test', 'C')],
       { requestImpl: impl },
     )
 
-    expect(result.stats).toEqual({ total: 3, aliveCount: 1, deadCount: 2 })
+    expect(result.stats).toEqual({ total: 3, aliveCount: 1, inconclusiveCount: 1, deadCount: 1 })
     expect(result.alive.map((o) => o.provider.provider.name)).toEqual(['A'])
-    const deadNames = result.dead.map((o) => o.provider.provider.name).sort()
-    expect(deadNames).toEqual(['B', 'C'])
+    expect(result.inconclusive.map((o) => o.provider.provider.name)).toEqual(['B'])
+    expect(result.dead.map((o) => o.provider.provider.name)).toEqual(['C'])
   })
 
   it('empty accepted → empty result, zero stats', async () => {
     const { impl } = fakeRequest([200])
     const result = await checkLiveness([], { requestImpl: impl })
-    expect(result.stats).toEqual({ total: 0, aliveCount: 0, deadCount: 0 })
+    expect(result.stats).toEqual({ total: 0, aliveCount: 0, inconclusiveCount: 0, deadCount: 0 })
     expect(result.alive).toHaveLength(0)
+    expect(result.inconclusive).toHaveLength(0)
     expect(result.dead).toHaveLength(0)
   })
 })

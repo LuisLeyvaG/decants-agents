@@ -49,6 +49,23 @@ import type { AcceptedProvider } from './validate-and-filter.js'
  */
 export const DEAD_SITE = 'dead_site' as const
 
+/**
+ * Module-LOCAL reason for an INCONCLUSIVE liveness result — the site neither
+ * proved alive (2xx) nor proved dead, so we do NOT discard it.
+ *
+ * ── PROVISIONAL (sprint del parche A2) ───────────────────────────────────────
+ * El liveness sale por la IP directa de la VM (datacenter GCP us-central1). Los
+ * WAF de muchas tiendas .mx devuelven 403/429 a tráfico de datacenter → falsos
+ * "caídos" (run #59: 6 de 7 descartes fueron http_403 sobre sitios vivos). Hasta
+ * que vuelva el filtrado real con el proxy residencial Bright Data MX (DIFERIDO,
+ * ver TODO.md), un resultado ambiguo NO descarta: solo descartamos cuando hay
+ * evidencia real de que el dominio no existe / está caído (DNS, conexión
+ * rechazada, 404, 410, o sin URL). Todo lo demás cae aquí y se persiste, con
+ * `last_verified_at` nulo, para que un re-check futuro (con proxy) lo revalide.
+ * ─────────────────────────────────────────────────────────────────────────────
+ */
+export const INCONCLUSIVE = 'liveness_inconclusive' as const
+
 /** Per-site request timeout. Fixed for this MVP. */
 export const LIVENESS_TIMEOUT_MS = 5000 as const
 
@@ -68,11 +85,17 @@ export type DeadDetail =
 export interface LivenessOutcome {
   /** The accepted record, forwarded INTACT (liveness never mutates it). */
   readonly provider: AcceptedProvider
-  readonly status: 'alive' | 'dead'
+  /**
+   * - 'alive'        → proved alive (HTTP 2xx).
+   * - 'inconclusive' → ambiguous (403/429/5xx/3xx/other-4xx/timeout/TLS/error):
+   *                    NOT discarded this sprint (PROVISIONAL, see INCONCLUSIVE).
+   * - 'dead'         → proved dead (DNS / refused / 404 / 410 / no_url).
+   */
+  readonly status: 'alive' | 'inconclusive' | 'dead'
   /** HTTP status when we got a response; null when none (timeout/DNS/refused/no_url). */
   readonly httpStatus: number | null
-  /** Local trace literal: 'dead_site' on dead, null on alive. */
-  readonly reason: typeof DEAD_SITE | null
+  /** Local trace literal: 'dead_site' on dead, 'liveness_inconclusive' on inconclusive, null on alive. */
+  readonly reason: typeof DEAD_SITE | typeof INCONCLUSIVE | null
   /** Granular cause for the trace; null on alive. */
   readonly detail: DeadDetail | null
 }
@@ -80,11 +103,17 @@ export interface LivenessOutcome {
 export interface LivenessStats {
   readonly total: number
   readonly aliveCount: number
+  /** Ambiguous results kept (not discarded) this sprint — see INCONCLUSIVE. */
+  readonly inconclusiveCount: number
   readonly deadCount: number
 }
 
 export interface LivenessResult {
+  /** Proved alive (2xx). */
   readonly alive: ReadonlyArray<LivenessOutcome>
+  /** Ambiguous — kept and persisted this sprint (PROVISIONAL), not discarded. */
+  readonly inconclusive: ReadonlyArray<LivenessOutcome>
+  /** Proved dead — the ONLY bucket that is discarded. */
   readonly dead: ReadonlyArray<LivenessOutcome>
   readonly stats: LivenessStats
 }
@@ -166,9 +195,22 @@ function dead(
 }
 
 /**
- * Probe ONE accepted provider. Never throws: every failure mode resolves to a
- * `dead` outcome so one bad site can't tumble the batch (Promise.allSettled in
- * the caller is the second belt).
+ * Ambiguous result — kept, NOT discarded (PROVISIONAL, see INCONCLUSIVE). The
+ * `detail` records the concrete cause (http_403 / timeout / …) for the trace so
+ * we can measure, once the proxy lands, how many were datacenter-IP blocks.
+ */
+function inconclusive(
+  provider: AcceptedProvider,
+  httpStatus: number | null,
+  detail: DeadDetail,
+): LivenessOutcome {
+  return { provider, status: 'inconclusive', httpStatus, reason: INCONCLUSIVE, detail }
+}
+
+/**
+ * Probe ONE accepted provider. Never throws: every path resolves to a classified
+ * outcome (alive / inconclusive / dead) so one bad site can't tumble the batch
+ * (Promise.allSettled in the caller is the second belt).
  */
 async function probe(
   accepted: AcceptedProvider,
@@ -189,15 +231,26 @@ async function probe(
 
   try {
     const { statusCode } = await requestImpl(url, { timeoutMs })
-    // Alive === 2xx, strictly. 3xx/4xx/5xx are dead: we do NOT follow redirects
-    // as a sign of life, and a disabled-store page often answers 200-with-a-body
-    // (deferred to TODO.md, item a) — but a non-2xx is unambiguously not alive.
+    // Alive === 2xx, strictly. We still do NOT follow redirects as a sign of life.
     if (statusCode >= 200 && statusCode < 300) {
       return alive(accepted, statusCode)
     }
-    return dead(accepted, statusCode, `http_${statusCode}`)
+    // PROVISIONAL real-death rule: only 404 / 410 (page not found / gone) count as
+    // proof of death. Every other non-2xx — 3xx, 403, 429, other 4xx, 5xx — is
+    // INCONCLUSIVE and NOT discarded: 403/429 from the VM's datacenter egress are
+    // overwhelmingly WAF/IP blocks, not death (see INCONCLUSIVE banner + TODO.md).
+    if (statusCode === 404 || statusCode === 410) {
+      return dead(accepted, statusCode, `http_${statusCode}`)
+    }
+    return inconclusive(accepted, statusCode, `http_${statusCode}`)
   } catch (err) {
-    return dead(accepted, null, classifyError(err))
+    // Real death: DNS not resolvable / connection refused. Timeout / TLS / generic
+    // error are ambiguous (often IP-level interference) → inconclusive, not dead.
+    const detail = classifyError(err)
+    if (detail === 'dns' || detail === 'conn_refused') {
+      return dead(accepted, null, detail)
+    }
+    return inconclusive(accepted, null, detail)
   }
 }
 
@@ -207,9 +260,10 @@ async function probe(
 
 /**
  * Probe every accepted provider's storefront in parallel and partition into
- * alive/dead. Pure-ish at the seams: the only impurity is `requestImpl`, which is
- * injectable. Returns a result with its own LOCAL shape — it does not reuse the
- * contract's `reason` enum (Decision A).
+ * alive / inconclusive / dead. Pure-ish at the seams: the only impurity is
+ * `requestImpl`, which is injectable. Returns a result with its own LOCAL shape —
+ * it does not reuse the contract's `reason` enum (Decision A). PROVISIONAL: only
+ * `dead` is discarded; `inconclusive` is persisted (see INCONCLUSIVE banner).
  */
 export async function checkLiveness(
   accepted: ReadonlyArray<AcceptedProvider>,
@@ -219,30 +273,34 @@ export async function checkLiveness(
   const timeoutMs = deps.timeoutMs ?? LIVENESS_TIMEOUT_MS
 
   // allSettled is the second belt: probe() already never rejects, but allSettled
-  // guarantees that even an unexpected throw marks one site dead instead of
-  // aborting the whole run.
+  // guarantees that even an unexpected throw marks one site INCONCLUSIVE instead
+  // of aborting the whole run (an unknown failure is not proof of death).
   const settled = await Promise.allSettled(
     accepted.map((a) => probe(a, requestImpl, timeoutMs)),
   )
 
-  const alive: LivenessOutcome[] = []
+  const aliveOut: LivenessOutcome[] = []
+  const inconclusiveOut: LivenessOutcome[] = []
   const deadOut: LivenessOutcome[] = []
   for (let i = 0; i < settled.length; i++) {
     const s = settled[i] as PromiseSettledResult<LivenessOutcome>
     const outcome =
       s.status === 'fulfilled'
         ? s.value
-        : dead(accepted[i] as AcceptedProvider, null, 'error')
-    if (outcome.status === 'alive') alive.push(outcome)
+        : inconclusive(accepted[i] as AcceptedProvider, null, 'error')
+    if (outcome.status === 'alive') aliveOut.push(outcome)
+    else if (outcome.status === 'inconclusive') inconclusiveOut.push(outcome)
     else deadOut.push(outcome)
   }
 
   return {
-    alive,
+    alive: aliveOut,
+    inconclusive: inconclusiveOut,
     dead: deadOut,
     stats: {
       total: accepted.length,
-      aliveCount: alive.length,
+      aliveCount: aliveOut.length,
+      inconclusiveCount: inconclusiveOut.length,
       deadCount: deadOut.length,
     },
   }
@@ -257,10 +315,12 @@ export async function checkLiveness(
 // 'ok'`:
 //
 //     const liveness = await checkLiveness(result.accepted)
-//     // ONLY liveness.alive proceeds: inject trust_fulfillment/last_verified_at/
-//     // id/run_id on each alive.provider, run ProviderSchema.parse, then UPSERT.
-//     // liveness.dead is logged with its `reason` ('dead_site') + `detail` for the
-//     // run trace; those providers are NOT persisted.
+//     // PROVISIONAL (parche A2): liveness.alive ∪ liveness.inconclusive proceed —
+//     // inject trust_fulfillment/last_verified_at(null)/id/run_id, ProviderSchema.parse,
+//     // then UPSERT. ONLY liveness.dead (real death: DNS/refused/404/410/no_url) is
+//     // dropped. liveness.dead and liveness.inconclusive are both logged with their
+//     // `reason` + `detail` for the run trace. The real liveness cut (discard on
+//     // 403/429/etc.) returns with the Bright Data MX residential proxy — see TODO.md.
 //
-// Deliberately left UNWIRED here — activating it in the production workflow is a
-// separate sprint (P2). This module ships as function + tests + this description.
+// WIRED in server/pipeline.ts (the container that replaced the planned n8n Code
+// node). This module ships as function + tests + this description.
