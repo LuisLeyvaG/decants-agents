@@ -16,6 +16,15 @@ deuda sea explícita y no una sorpresa.
 > inconclusive`). **PENDIENTE: con el proxy (b), restaurar el corte real** —
 > reclasificar 403/429/timeout como descarte cuando salgan por IP residencial MX.
 
+> ✅ **Re-check de liveness diferido a A4 (decisión 2026-06-06).** El parche de
+> liveness (b941a50+c73c06f) se ACEPTÓ con el gate abierto a propósito:
+> `pipeline.ts` persiste `alive ∪ inconclusive` con `last_verified_at=NULL`. El
+> corte real NO se restaura aquí; el re-check de las filas `agent.providers` con
+> `last_verified_at IS NULL` queda delegado a A4, que scrapea cada `catalog_url`
+> por residencial MX y sella `last_verified_at` al verificar disponibilidad real
+> con éxito. A3 (Site Profiler) NO sella este campo — solo produce recetas. Deuda
+> con dueño (A4), no cabo suelto.
+
 El liveness check (`liveness-check.ts`) se entregó deliberadamente acotado:
 GET, vivo = HTTP 2xx, IP directa, timeout 5000 ms, paralelo con
 `Promise.allSettled`. Quedan abiertos:
