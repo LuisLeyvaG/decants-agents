@@ -73,6 +73,14 @@ export interface BrightDataResult {
   readonly status: number
   /** Decompressed response body as UTF-8 text. */
   readonly body: string
+  /**
+   * The `Location` response header on a 3xx, else null. Exposed so navigation
+   * consumers (A3 search-probe / A4) can FOLLOW a redirect themselves —
+   * `brightDataFetch` deliberately still does NOT follow redirects (a 3xx is
+   * returned as-is, never chased; A2/liveness depend on that behavior). Normalized
+   * from undici's `string | string[] | undefined` to the first value or null.
+   */
+  readonly location: string | null
   /** On-wire bytes this call recorded into the guard (exact body + conservative header estimate). */
   readonly bytesTransferred: number
   /** Number of attempts made (1 + retries used). */
@@ -311,6 +319,20 @@ function headerValue(
 }
 
 /**
+ * The `Location` header normalized for navigation consumers, reported ONLY for a
+ * 3xx response (null otherwise). Reuses `headerValue`, so a `string[]` collapses
+ * to its first entry and an absent header becomes null. This is a pure REPORT —
+ * brightDataFetch never follows the redirect itself.
+ */
+function extractLocation(
+  status: number,
+  headers: Record<string, string | string[] | undefined>,
+): string | null {
+  if (status < 300 || status >= 400) return null
+  return headerValue(headers, 'location') ?? null
+}
+
+/**
  * Decompress per `content-encoding`, degrading gracefully:
  *   - absent / `identity` → raw bytes as UTF-8 text.
  *   - unknown encoding     → raw bytes as-is + a warning (no crash).
@@ -494,20 +516,21 @@ export function createBrightDataFetcher(
         bytesThisCall += attemptBytes
 
         const status = res.statusCode
+        const location = extractLocation(status, res.headers)
 
         if (!isRetryableStatus(status)) {
           // Definitive response. <400 is usable (success); 4xx (e.g. 404) is a
           // non-retryable failure but still returned with its status/body.
           if (status < 400) guard.recordSuccess()
           else guard.recordFailure()
-          return { status, body: bodyText, bytesTransferred: bytesThisCall, attempts: attempt, sessionId }
+          return { status, body: bodyText, location, bytesTransferred: bytesThisCall, attempts: attempt, sessionId }
         }
 
         // Retryable status (5xx / 429): count the failure, retry if budget of
         // retries remains, else return the last bad response.
         guard.recordFailure()
         if (attempt > maxRetries) {
-          return { status, body: bodyText, bytesTransferred: bytesThisCall, attempts: attempt, sessionId }
+          return { status, body: bodyText, location, bytesTransferred: bytesThisCall, attempts: attempt, sessionId }
         }
         await sleep(backoffDelayMs(attempt))
         continue

@@ -357,3 +357,42 @@ describe('security: the proxy password never leaks', () => {
     expect(out).toContain('***')
   })
 })
+
+describe('redirect Location header (exposed for navigation; still NOT auto-followed)', () => {
+  it('302 with Location → result.location is that URL, and it is NOT followed', async () => {
+    const guard = newGuard()
+    const target = 'https://example.test/search-results?q=dior'
+    const { fn, calls } = fetcher([resp(302, '', { headers: { location: target } })])
+
+    const result = await fn({ url: 'https://example.test/?s=dior', guard })
+
+    expect(result.status).toBe(302)
+    expect(result.location).toBe(target)
+    expect(result.attempts).toBe(1)
+    expect(calls).toHaveLength(1) // a 3xx is returned, never chased
+  })
+
+  it('200 without Location → result.location is null', async () => {
+    const guard = newGuard()
+    const { fn } = fetcher([resp(200, '<html>ok</html>')])
+
+    const result = await fn({ url: 'https://example.test/', guard })
+
+    expect(result.location).toBeNull()
+  })
+
+  it('Location delivered as a string[] → takes the first entry', async () => {
+    const guard = newGuard()
+    const first = 'https://example.test/first'
+    const raw: RawResponse = {
+      statusCode: 301,
+      headers: { location: [first, 'https://example.test/second'] },
+      body: bodyOf(Buffer.from('', 'utf8')),
+    }
+    const { fn } = fetcher([raw])
+
+    const result = await fn({ url: 'https://example.test/', guard })
+
+    expect(result.location).toBe(first)
+  })
+})
