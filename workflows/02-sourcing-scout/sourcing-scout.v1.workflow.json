@@ -1,0 +1,169 @@
+{
+  "name": "agent-2-sourcing-scout-v1",
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": true
+  },
+  "nodes": [
+    {
+      "id": "c393e4ae-da54-4954-bd00-b2e3d56ec399",
+      "name": "Cron Lunes 05:00 CDMX",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [0, 96],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 11 * * 1"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "2b78c70e-7790-4856-b880-4dbfcddf408f",
+      "name": "Generate runId",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [224, 96],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const ENCODING = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';\nconst ENCODING_LEN = 32;\nconst TIME_LEN = 10;\nconst RANDOM_LEN = 16;\nconst TIME_MAX = 281474976710655;\n\nfunction encodeTime(now, len) {\n  if (now > TIME_MAX) {\n    throw new Error('cannot encode time: too large');\n  }\n  let mod;\n  let str = '';\n  for (let i = len; i > 0; i--) {\n    mod = now % ENCODING_LEN;\n    str = ENCODING.charAt(mod) + str;\n    now = (now - mod) / ENCODING_LEN;\n  }\n  return str;\n}\n\nfunction encodeRandom(len) {\n  let str = '';\n  for (let i = 0; i < len; i++) {\n    str += ENCODING.charAt(Math.floor(Math.random() * ENCODING_LEN));\n  }\n  return str;\n}\n\nfunction ulid() {\n  return encodeTime(Date.now(), TIME_LEN) + encodeRandom(RANDOM_LEN);\n}\n\nconst runId = ulid();\nconst startedAt = new Date().toISOString();\n\nreturn [\n  {\n    json: {\n      runId,\n      startedAt,\n      agentName: 'sourcing_scout',\n      workflowVersion: 'v1',\n    },\n  },\n];"
+      }
+    },
+    {
+      "id": "49cd03ae-6a6c-49f3-b044-090404984924",
+      "name": "Insert run_logs started",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [448, 96],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO agent.run_logs (\n  id,\n  run_id,\n  agent,\n  status,\n  started_at,\n  metadata\n) VALUES (\n  $1,\n  $1,\n  $2,\n  'started',\n  $3::timestamptz,\n  $4::jsonb\n);",
+        "options": {
+          "queryReplacement": "={{ $json.runId }},{{ $json.agentName }},{{ $json.startedAt }},{{ JSON.stringify({ workflowVersion: $('Generate runId').item.json.workflowVersion, model: 'gpt-5.4', reasoningEffort: 'low', cron: '0 11 * * 1' }) }}"
+        }
+      },
+      "credentials": {
+        "postgres": {
+          "name": "postres-agents"
+        }
+      }
+    },
+    {
+      "id": "03fe06c0-1762-4219-8d69-00e5bc1f562f",
+      "name": "POST sourcing-scout /run",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [672, 96],
+      "parameters": {
+        "method": "POST",
+        "url": "http://sourcing-scout:8080/run",
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "keypair",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "run_id",
+              "value": "={{ $('Generate runId').item.json.runId }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 300000
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "id": "6ee02e49-a255-4a4a-8a45-b8d9969333b8",
+      "name": "Log run summary",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [896, 0],
+      "parameters": {}
+    },
+    {
+      "id": "71c168d5-dab7-4067-856f-2b73c3409c7c",
+      "name": "Update run_logs failed",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [896, 192],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE agent.run_logs\nSET\n  status = 'failed',\n  finished_at = now(),\n  duration_ms = (EXTRACT(EPOCH FROM (now() - started_at)) * 1000)::int,\n  errors_count = 1,\n  metadata = COALESCE(metadata, '{}'::jsonb) || $2::jsonb\nWHERE run_id = $1 AND status = 'started';",
+        "options": {
+          "queryReplacement": "={{ $('Generate runId').item.json.runId }},{{ JSON.stringify({ error: ($json.error && $json.error.message) || $json.message || 'sourcing-scout /run unreachable or non-2xx', source: 'n8n_http_request', failedAt: $now.toISO() }) }}"
+        }
+      },
+      "credentials": {
+        "postgres": {
+          "name": "postres-agents"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Cron Lunes 05:00 CDMX": {
+      "main": [
+        [
+          {
+            "node": "Generate runId",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate runId": {
+      "main": [
+        [
+          {
+            "node": "Insert run_logs started",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert run_logs started": {
+      "main": [
+        [
+          {
+            "node": "POST sourcing-scout /run",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "POST sourcing-scout /run": {
+      "main": [
+        [
+          {
+            "node": "Log run summary",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Update run_logs failed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "meta": {
+    "aiBuilderAssisted": true,
+    "builderVariant": "mcp"
+  },
+  "description": "Sourcing Scout (A2) v1: cron Lunes 11:00 UTC, genera runId, abre run_logs started, POST sourcing-scout:8080/run, loguea counts; rama de error cierra run_logs failed. INACTIVO hasta desplegar el contenedor."
+}

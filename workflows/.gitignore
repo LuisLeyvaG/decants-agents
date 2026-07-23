@@ -5,8 +5,21 @@ dist/
 .env.local
 coverage/
 
+# Bright Data zone SSL CA(s) — not secret, but vendor-managed, rotates, and
+# does not belong in source. Downloaded from the Bright Data dashboard.
+02-sourcing-scout/certs/
+
+# Throwaway HTML samples dumped by smoke-diagnose.ts for manual inspection.
+02-sourcing-scout/tmp/
+
 # Throwaway artifacts for n8n UI copy-paste (regenerable from system-prompt.md).
 # The base64 prompt is embedded directly inside the workflow JSON's
 # "Build OpenAI Request" Code node, so these helper files are not source.
 *.b64.txt
 *.escaped.json
+
+# Resolved system prompts (build artifacts). The source of truth is the
+# *.md with the {{...}} marker; the resolved *.generated.md is rebuilt by
+# `npm run build:prompt` (wired into pretest). It is ~99% identical to its
+# source, so committing it would invite editing the wrong copy → list drift.
+*.generated.md

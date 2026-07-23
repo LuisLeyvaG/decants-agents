@@ -1,0 +1,27 @@
+# Build context = workflows/. Keep the image lean and never ship secrets/junk.
+
+# Deps are installed fresh inside the image (npm ci) — never copy host modules.
+node_modules/
+**/node_modules/
+
+# Secrets must never enter an image layer.
+.env
+.env.local
+*.env.local
+
+# VCS / editor / OS noise
+.git/
+.gitignore
+.DS_Store
+*.swp
+*.swo
+
+# Tests, legacy code, and calibration dumps — not needed to run the container.
+**/__tests__/
+**/legacy/
+**/tmp/
+*.log
+
+# A2 runs the pipeline via web_search; it does not scrape with Bright Data in v1,
+# so the proxy CA cert is not needed in the image.
+02-sourcing-scout/certs/

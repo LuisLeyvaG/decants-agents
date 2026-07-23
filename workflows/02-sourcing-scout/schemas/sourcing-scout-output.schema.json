@@ -1,0 +1,100 @@
+{
+  "name": "sourcing_scout_output",
+  "strict": true,
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "providers": {
+        "maxItems": 30,
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "source": {
+              "type": "string",
+              "enum": ["web"],
+              "description": "Discovery channel. Always \"web\" in v3 — the only allowed value. Mirrors agent.providers.source."
+            },
+            "source_id": {
+              "anyOf": [
+                { "type": "string", "minLength": 1 },
+                { "type": "null" }
+              ],
+              "description": "Optional stable id from the discovery channel, kept for cheap traceability. For web discovery there is usually none, so emit null. Use a non-empty string ONLY when the channel exposes a stable identifier. The key MUST be present even when null. Mirrors agent.providers.source_id."
+            },
+            "name": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Provider / store display name as shown on its own website (e.g. \"Leyva Scents\"). Mirrors agent.providers.name."
+            },
+            "catalog_url": {
+              "type": "string",
+              "description": "URL of the provider's own catalog / storefront. REQUIRED — a provider with no own functional website fails the hard gate and must not be emitted at all. Mirrors agent.providers.catalog_url (NOT NULL in v3)."
+            },
+            "whatsapp": {
+              "anyOf": [
+                { "type": "string" },
+                { "type": "null" }
+              ],
+              "description": "Contact phone / WhatsApp as digits. Emit JSON null when the site exposes no phone — NEVER an empty string, \"N/A\", \"no disponible\", \"-\", or any placeholder. A sentinel string is not recognized as empty downstream and would corrupt the dedup hash. The key MUST be present even when null. Mirrors agent.providers.whatsapp."
+            },
+            "instagram_handle": {
+              "anyOf": [
+                { "type": "string" },
+                { "type": "null" }
+              ],
+              "description": "Instagram handle WITHOUT the leading \"@\". Emit JSON null when there is none — NEVER an empty string or placeholder (same dedup-corruption reason as whatsapp). The key MUST be present even when null. Mirrors agent.providers.instagram_handle."
+            },
+            "evidence_urls": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Flat list of URLs justifying why this provider was admitted (catalog / about / shipping / returns / policy pages). Populate it: an empty array does not meet the evidence standard. Do NOT fabricate a URL to fill it — if you genuinely have none, emit the honest empty array; the deterministic validateAndFilter (sprint 2R.3) rejects empty evidence, not this schema. Mirrors agent.providers.evidence_urls."
+            },
+            "discovery_query": {
+              "type": "string",
+              "minLength": 1,
+              "description": "The exact web_search query that surfaced this provider. Mirrors agent.providers.discovery_query."
+            },
+            "confidence": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1,
+              "description": "How sure the model is of its OWN trust_quality judgement, given the coverage and quality of accessible evidence — NOT enthusiasm about the store. Distinct axis from trust_quality (see system prompt §5.3): a legitimate store with thin evidence is high trust_quality / low confidence; a mediocre store seen in full is low trust_quality / high confidence. Be honest — do not inflate to clear any downstream threshold; the deterministic filter (2R.3) applies the cut, not you."
+            },
+            "trust_quality": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1,
+              "description": "Substantive judgement of the provider's legitimacy and premium fit, in [0,1]. Raised by: real visible contact, demonstrable age, a deep structured catalog, site/socials consistency, transactional signals (cart, payment methods, shipping/returns policy), carrying REFERENCE_BRANDS_V3 houses. Lowered by: full bottles only (no decants), tiny/generic catalog, no verifiable contact, uncurated dropshipper signals, IMPOSSIBLY LOW PRICES (counterfeit signal), cross-channel inconsistency. Geography modulates this (see §5.4) — there is no geography field. Emit the raw honest score, including below any threshold. Mirrors agent.providers.trust_quality."
+            },
+            "status": {
+              "type": "string",
+              "enum": ["active", "inactive", "suspended"],
+              "description": "Lifecycle status. Default and expected value is \"active\". Emit \"inactive\" or \"suspended\" ONLY with explicit evidence in evidence_urls (e.g. dead domain, a \"cerramos\" notice, long-dormant socials) — never on a hunch. Mirrors agent.providers.status."
+            }
+          },
+          "required": [
+            "source",
+            "source_id",
+            "name",
+            "catalog_url",
+            "whatsapp",
+            "instagram_handle",
+            "evidence_urls",
+            "discovery_query",
+            "confidence",
+            "trust_quality",
+            "status"
+          ],
+          "additionalProperties": false
+        },
+        "description": "Up to 30 decants providers discovered this run (PROVIDERS_MAX_PER_RUN). May be empty. Contains ONLY the fields the model has an epistemic basis to produce. trust_fulfillment, last_verified_at, dedup_hash, id and run_id are injected by the workflow Code node before the ProviderSchema (v3) parse / UPSERT and are deliberately absent here."
+      }
+    },
+    "required": ["providers"],
+    "additionalProperties": false
+  }
+}

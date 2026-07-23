@@ -21,3 +21,6 @@ postgres/data/
 
 # Node (por si alguna tool auxiliar añade scripts)
 node_modules/
+
+# Diagnostic / smoke output dumps (ig-diagnose, smoke-diagnose, etc.)
+tmp/
