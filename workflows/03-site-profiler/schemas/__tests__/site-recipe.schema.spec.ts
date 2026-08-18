@@ -5,18 +5,20 @@
  * Two halves, calqued from the two A1/A2 precedents:
  *   1. Zod structural contract — mirrors 02-sourcing-scout/schemas/
  *      provider.schema.spec.ts: a valid baseline, the nullable fields, the
- *      enums, and boundary rejections. The schema is PURELY STRUCTURAL: the two
- *      cross-field rules (active ⇔ title/price/stock well-formed;
- *      attribute_name required when source='attribute') live downstream in the
- *      validateAndFilter mirror, NOT here, so they are deliberately NOT tested
- *      in this file.
+ *      enums, and boundary rejections — now over the nested `variants`
+ *      dimension. The schema is PURELY STRUCTURAL: the three cross-field rules
+ *      (active ⇔ title + variants{container,price,availability} well-formed;
+ *      attribute_name required when source='attribute'; price_high only under
+ *      aggregate-range) live downstream in the validateAndProfile mirror, NOT
+ *      here, so they are deliberately NOT tested in this file.
  *   2. Generated JSON Schema integrity — mirrors scripts/__tests__/
  *      build-output-schema.spec.ts. These require `npm run build:schema` first;
- *      the `pretest` hook automates it. They assert the nested FieldSelector
- *      survives OpenAI strict mode: every object level (root, selectors, and
- *      every FieldSelector — including the three reached through a nullable
- *      `anyOf`) declares `additionalProperties: false`, lists ALL its keys in
- *      `required[]`, and carries no `format: "uri"`.
+ *      the `pretest` hook automates it. They assert the nested shape survives
+ *      OpenAI strict mode: EVERY object level (root, selectors, variants, and
+ *      every one of the 9 FieldSelectors — including those reached through a
+ *      nullable `anyOf`) declares `additionalProperties: false`, lists ALL its
+ *      keys in `required[]`, carries no `format: "uri"`, and the file has no
+ *      `$ref`.
  */
 
 import { readFileSync } from 'node:fs'
@@ -30,6 +32,7 @@ import {
   RECIPE_STATUS_VALUES,
   STRATEGY_VALUES,
   SiteRecipeSchema,
+  VARIANT_MODE_VALUES,
   type FieldSelector,
   type SiteRecipe,
 } from '../site-recipe.schema'
@@ -50,15 +53,30 @@ const makeFieldSelector = (
   ...overrides,
 })
 
+const makeVariants = (
+  overrides: Partial<SiteRecipe['selectors']['variants']> = {},
+): SiteRecipe['selectors']['variants'] => ({
+  mode: 'per-offer',
+  container: makeFieldSelector({ selector: 'offers', source: 'json' }),
+  ml: null,
+  price: makeFieldSelector({ selector: 'price', source: 'json' }),
+  price_high: null,
+  availability: makeFieldSelector({
+    selector: 'availability',
+    source: 'json',
+    cleanup_regex: 'https?://schema\\.org/(InStock|OutOfStock)',
+  }),
+  ...overrides,
+})
+
 const makeRecipe = (overrides: Partial<SiteRecipe> = {}): SiteRecipe => ({
   search_url_template: '?s=<query>',
   selectors: {
-    title: makeFieldSelector({ selector: 'h1.product-title', source: 'text' }),
-    price: makeFieldSelector(),
-    stock: makeFieldSelector({ selector: 'offers.availability', source: 'json' }),
-    currency: null,
-    ml: null,
+    title: makeFieldSelector({ selector: 'name', source: 'json' }),
+    brand: null,
     sku: null,
+    currency: null,
+    variants: makeVariants(),
   },
   recipe_status: 'active',
   ...overrides,
@@ -145,44 +163,80 @@ describe('FieldSelectorSchema — invalid', () => {
 })
 
 describe('SiteRecipeSchema — valid', () => {
-  it('accepts a fully populated baseline recipe', () => {
+  it('accepts a fully populated baseline recipe (per-offer)', () => {
     expect(SiteRecipeSchema.safeParse(makeRecipe()).success).toBe(true)
+  })
+
+  it('accepts an aggregate-range recipe with a non-null price_high (Woo shape)', () => {
+    const result = SiteRecipeSchema.safeParse(
+      makeRecipe({
+        selectors: {
+          title: makeFieldSelector({ selector: 'name', source: 'json' }),
+          brand: null,
+          sku: makeFieldSelector({ selector: 'sku', source: 'json' }),
+          currency: makeFieldSelector({ selector: 'offers.0.priceCurrency', source: 'json' }),
+          variants: makeVariants({
+            mode: 'aggregate-range',
+            container: makeFieldSelector({ selector: 'offers.0', source: 'json' }),
+            price: makeFieldSelector({ selector: 'lowPrice', source: 'json' }),
+            price_high: makeFieldSelector({ selector: 'highPrice', source: 'json' }),
+          }),
+        },
+      }),
+    )
+    expect(result.success).toBe(true)
   })
 
   it('accepts search_url_template = null (no navigable search pattern)', () => {
     expect(SiteRecipeSchema.safeParse(makeRecipe({ search_url_template: null })).success).toBe(true)
   })
 
-  it('accepts the optional selectors (currency/ml/sku) set to null', () => {
+  it('accepts the optional product selectors (brand/sku/currency) and variants.ml/price_high set to null', () => {
     const result = SiteRecipeSchema.safeParse(
       makeRecipe({
         selectors: {
-          title: makeFieldSelector(),
-          price: makeFieldSelector(),
-          stock: makeFieldSelector(),
-          currency: null,
-          ml: null,
+          title: makeFieldSelector({ selector: 'name', source: 'json' }),
+          brand: null,
           sku: null,
+          currency: null,
+          variants: makeVariants({ ml: null, price_high: null }),
         },
       }),
     )
     expect(result.success).toBe(true)
   })
 
-  it('accepts the optional selectors as FieldSelector objects', () => {
+  it('accepts the optional selectors as FieldSelector objects (brand/sku/currency + variants.ml)', () => {
     const result = SiteRecipeSchema.safeParse(
       makeRecipe({
         selectors: {
-          title: makeFieldSelector(),
-          price: makeFieldSelector(),
-          stock: makeFieldSelector(),
-          currency: makeFieldSelector({ strategy: 'css', selector: '.price .currency', source: 'text' }),
-          ml: makeFieldSelector({ strategy: 'css', selector: 'h1', source: 'text', cleanup_regex: '(\\d+)\\s*ml' }),
-          sku: makeFieldSelector({ source: 'json', selector: 'sku' }),
+          title: makeFieldSelector({ selector: 'name', source: 'json' }),
+          brand: makeFieldSelector({ strategy: 'css', selector: '.brand', source: 'text' }),
+          sku: makeFieldSelector({ selector: 'sku', source: 'json' }),
+          currency: makeFieldSelector({ selector: 'offers.0.priceCurrency', source: 'json' }),
+          variants: makeVariants({
+            ml: makeFieldSelector({ strategy: 'css', selector: 'h1', source: 'text', cleanup_regex: '(\\d+)\\s*ml' }),
+          }),
         },
       }),
     )
     expect(result.success).toBe(true)
+  })
+
+  it.each(VARIANT_MODE_VALUES)('accepts variants.mode %s', (mode) => {
+    expect(
+      SiteRecipeSchema.safeParse(
+        makeRecipe({
+          selectors: {
+            title: makeFieldSelector({ selector: 'name', source: 'json' }),
+            brand: null,
+            sku: null,
+            currency: null,
+            variants: makeVariants({ mode }),
+          },
+        }),
+      ).success,
+    ).toBe(true)
   })
 
   it.each(RECIPE_STATUS_VALUES)('accepts recipe_status %s', (recipe_status) => {
@@ -197,22 +251,37 @@ describe('SiteRecipeSchema — invalid', () => {
     )
   })
 
+  it('rejects a variants.mode outside the enum', () => {
+    const recipe = makeRecipe()
+    const result = SiteRecipeSchema.safeParse({
+      ...recipe,
+      selectors: {
+        ...recipe.selectors,
+        variants: { ...recipe.selectors.variants, mode: 'single' as never },
+      },
+    })
+    expect(result.success).toBe(false)
+    if (!result.success) {
+      expect(result.error.issues.map((i) => i.path)).toContainEqual(['selectors', 'variants', 'mode'])
+    }
+  })
+
   it('rejects an empty (non-null) search_url_template', () => {
     expect(SiteRecipeSchema.safeParse(makeRecipe({ search_url_template: '' })).success).toBe(false)
   })
 
-  it('rejects a missing mandatory selector (price)', () => {
+  it('rejects a missing mandatory product selector (title)', () => {
     const recipe = makeRecipe()
     const selectors: Partial<SiteRecipe['selectors']> = { ...recipe.selectors }
-    delete selectors.price
+    delete selectors.title
     const result = SiteRecipeSchema.safeParse({ ...recipe, selectors })
     expect(result.success).toBe(false)
     if (!result.success) {
-      expect(result.error.issues.map((i) => i.path)).toContainEqual(['selectors', 'price'])
+      expect(result.error.issues.map((i) => i.path)).toContainEqual(['selectors', 'title'])
     }
   })
 
-  it('rejects a null mandatory selector (title is non-nullable)', () => {
+  it('rejects a null mandatory product selector (title is non-nullable)', () => {
     const recipe = makeRecipe()
     const result = SiteRecipeSchema.safeParse({
       ...recipe,
@@ -221,15 +290,62 @@ describe('SiteRecipeSchema — invalid', () => {
     expect(result.success).toBe(false)
   })
 
-  it('rejects a malformed nested selector (empty selector string)', () => {
+  it('rejects a missing mandatory variant selector (variants.price) — nested path', () => {
     const recipe = makeRecipe()
+    const variants: Partial<SiteRecipe['selectors']['variants']> = {
+      ...recipe.selectors.variants,
+    }
+    delete variants.price
     const result = SiteRecipeSchema.safeParse({
       ...recipe,
-      selectors: { ...recipe.selectors, stock: makeFieldSelector({ selector: '' }) },
+      selectors: { ...recipe.selectors, variants },
     })
     expect(result.success).toBe(false)
     if (!result.success) {
-      expect(result.error.issues.map((i) => i.path)).toContainEqual(['selectors', 'stock', 'selector'])
+      expect(result.error.issues.map((i) => i.path)).toContainEqual(['selectors', 'variants', 'price'])
+    }
+  })
+
+  it('rejects a null mandatory variant selector (variants.container is non-nullable)', () => {
+    const recipe = makeRecipe()
+    const result = SiteRecipeSchema.safeParse({
+      ...recipe,
+      selectors: {
+        ...recipe.selectors,
+        variants: { ...recipe.selectors.variants, container: null as never },
+      },
+    })
+    expect(result.success).toBe(false)
+  })
+
+  it('rejects a malformed nested variant selector (empty selector string) — nested path', () => {
+    const recipe = makeRecipe()
+    const result = SiteRecipeSchema.safeParse({
+      ...recipe,
+      selectors: {
+        ...recipe.selectors,
+        variants: { ...recipe.selectors.variants, availability: makeFieldSelector({ selector: '' }) },
+      },
+    })
+    expect(result.success).toBe(false)
+    if (!result.success) {
+      expect(result.error.issues.map((i) => i.path)).toContainEqual([
+        'selectors',
+        'variants',
+        'availability',
+        'selector',
+      ])
+    }
+  })
+
+  it('rejects a missing variants object entirely', () => {
+    const recipe = makeRecipe()
+    const selectors: Partial<SiteRecipe['selectors']> = { ...recipe.selectors }
+    delete selectors.variants
+    const result = SiteRecipeSchema.safeParse({ ...recipe, selectors })
+    expect(result.success).toBe(false)
+    if (!result.success) {
+      expect(result.error.issues.map((i) => i.path)).toContainEqual(['selectors', 'variants'])
     }
   })
 
@@ -262,7 +378,7 @@ const loadGeneratedSchema = (): OpenAIEnvelope =>
 // Recursively walk a JSON Schema tree, yielding every node that has
 // `type === 'object'`. Calqued from build-output-schema.spec.ts. Recurses into
 // `anyOf` arrays too, so the FieldSelector objects nested under the nullable
-// currency/ml/sku branches ARE visited.
+// brand/sku/currency and variants.ml/price_high branches ARE visited.
 function* walkObjectNodes(
   node: unknown,
 ): Generator<Record<string, unknown>, void, undefined> {
@@ -342,14 +458,18 @@ describe('Generated OpenAI JSON Schema — strict-mode invariants at every objec
     expect(readFileSync(SCHEMA_PATH, 'utf-8')).not.toMatch(/"format"\s*:\s*"uri"/)
   })
 
-  it('has exactly 8 object nodes: root + selectors + 6 FieldSelectors (nesting is bounded)', () => {
-    // Pins the nested shape we deliberately isolated this sprint: if a future
-    // change adds/removes a selector or an object level, this count breaks and
-    // forces a re-check against OpenAI strict mode.
-    expect([...walkObjectNodes(loadGeneratedSchema().schema)]).toHaveLength(8)
+  it('has exactly 12 object nodes: root + selectors + variants + 9 FieldSelectors (nesting is bounded)', () => {
+    // Pins the nested shape this sprint introduced (the variants dimension): if a
+    // future change adds/removes a selector or an object level, this count breaks
+    // and forces a re-check against OpenAI strict mode.
+    //   root(1) + selectors(1) + variants(1)
+    //   + 4 product FieldSelectors (title, brand, sku, currency)
+    //   + 5 variant FieldSelectors (container, ml, price, price_high, availability)
+    //   = 12
+    expect([...walkObjectNodes(loadGeneratedSchema().schema)]).toHaveLength(12)
   })
 
-  it('each of the 6 FieldSelector nodes is fully required + closed', () => {
+  it('each of the 9 FieldSelector nodes is fully required + closed', () => {
     const fieldSelectorKeys = [
       'strategy',
       'selector',
@@ -362,20 +482,32 @@ describe('Generated OpenAI JSON Schema — strict-mode invariants at every objec
       const props = node.properties as Record<string, unknown> | undefined
       return props !== undefined && Object.keys(props).includes('strategy')
     })
-    expect(selectorNodes).toHaveLength(6)
+    expect(selectorNodes).toHaveLength(9)
     for (const node of selectorNodes) {
       expect(node.additionalProperties).toBe(false)
       expect([...(node.required as string[])].sort()).toEqual(fieldSelectorKeys)
     }
   })
 
-  it('selectors object requires all six fields including the optional nullable ones', () => {
+  it('selectors object requires title, brand, sku, currency, variants and is closed', () => {
     const env = loadGeneratedSchema()
     const selectors = (env.schema.properties as Record<string, unknown>)
       .selectors as Record<string, unknown>
     expect([...(selectors.required as string[])].sort()).toEqual(
-      ['currency', 'ml', 'price', 'sku', 'stock', 'title'].sort(),
+      ['brand', 'currency', 'sku', 'title', 'variants'].sort(),
     )
     expect(selectors.additionalProperties).toBe(false)
+  })
+
+  it('variants object requires mode, container, ml, price, price_high, availability and is closed', () => {
+    const env = loadGeneratedSchema()
+    const selectors = (env.schema.properties as Record<string, unknown>)
+      .selectors as Record<string, unknown>
+    const variants = (selectors.properties as Record<string, unknown>)
+      .variants as Record<string, unknown>
+    expect([...(variants.required as string[])].sort()).toEqual(
+      ['availability', 'container', 'ml', 'mode', 'price', 'price_high'].sort(),
+    )
+    expect(variants.additionalProperties).toBe(false)
   })
 })

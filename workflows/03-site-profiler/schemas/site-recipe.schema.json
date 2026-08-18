@@ -35,7 +35,7 @@
               "selector": {
                 "type": "string",
                 "minLength": 1,
-                "description": "The locator, interpreted per `strategy`: a CSS selector, an XPath expression, or a path into the JSON-LD object (e.g. \"offers.price\"). Non-empty."
+                "description": "The locator, interpreted per `strategy`: a CSS selector, an XPath expression, or a path into the JSON-LD object (e.g. \"offers.price\", \"offers.0.lowPrice\"). Non-empty."
               },
               "source": {
                 "type": "string",
@@ -68,7 +68,7 @@
                     "type": "null"
                   }
                 ],
-                "description": "Optional regex to extract/clean the raw value (e.g. pull \"100\" from \"100 ml\", strip \"$\"/thousands separators from a price). NULL when the raw value is already clean. May also lift `ml` out of the title when the site only shows size there."
+                "description": "Optional regex to extract/clean the raw value (e.g. pull \"100\" from \"100 ml\", strip \"$\"/thousands separators from a price). NULL when the raw value is already clean. May also lift `ml` out of the title/URL when the site only shows size there."
               },
               "extraction_confidence": {
                 "type": "string",
@@ -89,151 +89,9 @@
               "extraction_confidence"
             ],
             "additionalProperties": false,
-            "description": "REQUIRED. How to read the product title."
+            "description": "REQUIRED. How to read the product title/name (e.g. JSON-LD \"name\"). This is the only mandatory PRODUCT-level selector."
           },
-          "price": {
-            "type": "object",
-            "properties": {
-              "strategy": {
-                "type": "string",
-                "enum": [
-                  "json-ld",
-                  "css",
-                  "xpath"
-                ],
-                "description": "Extraction strategy. Prefer \"json-ld\" when the page ships a <script type=\"application/ld+json\"> Product/Offer block; fall back to \"css\", then \"xpath\"."
-              },
-              "selector": {
-                "type": "string",
-                "minLength": 1,
-                "description": "The locator, interpreted per `strategy`: a CSS selector, an XPath expression, or a path into the JSON-LD object (e.g. \"offers.price\"). Non-empty."
-              },
-              "source": {
-                "type": "string",
-                "enum": [
-                  "text",
-                  "attribute",
-                  "json"
-                ],
-                "description": "Where to read the value once located: \"text\" = node text, \"attribute\" = the named attribute (see attribute_name), \"json\" = a value inside a JSON/JSON-LD blob."
-              },
-              "attribute_name": {
-                "anyOf": [
-                  {
-                    "type": "string",
-                    "minLength": 1
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "description": "The attribute to read when source = \"attribute\" (e.g. \"content\", \"data-price\"). NULL for source \"text\"/\"json\". When source = \"attribute\" this MUST be non-null — enforced downstream, not in this structural contract."
-              },
-              "cleanup_regex": {
-                "anyOf": [
-                  {
-                    "type": "string",
-                    "minLength": 1
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "description": "Optional regex to extract/clean the raw value (e.g. pull \"100\" from \"100 ml\", strip \"$\"/thousands separators from a price). NULL when the raw value is already clean. May also lift `ml` out of the title when the site only shows size there."
-              },
-              "extraction_confidence": {
-                "type": "string",
-                "enum": [
-                  "high",
-                  "medium",
-                  "low"
-                ],
-                "description": "How robust this selector is expected to be. \"high\" for a JSON-LD/Offer hit, lower for a brittle CSS/XPath path."
-              }
-            },
-            "required": [
-              "strategy",
-              "selector",
-              "source",
-              "attribute_name",
-              "cleanup_regex",
-              "extraction_confidence"
-            ],
-            "additionalProperties": false,
-            "description": "REQUIRED. How to read the product price."
-          },
-          "stock": {
-            "type": "object",
-            "properties": {
-              "strategy": {
-                "type": "string",
-                "enum": [
-                  "json-ld",
-                  "css",
-                  "xpath"
-                ],
-                "description": "Extraction strategy. Prefer \"json-ld\" when the page ships a <script type=\"application/ld+json\"> Product/Offer block; fall back to \"css\", then \"xpath\"."
-              },
-              "selector": {
-                "type": "string",
-                "minLength": 1,
-                "description": "The locator, interpreted per `strategy`: a CSS selector, an XPath expression, or a path into the JSON-LD object (e.g. \"offers.price\"). Non-empty."
-              },
-              "source": {
-                "type": "string",
-                "enum": [
-                  "text",
-                  "attribute",
-                  "json"
-                ],
-                "description": "Where to read the value once located: \"text\" = node text, \"attribute\" = the named attribute (see attribute_name), \"json\" = a value inside a JSON/JSON-LD blob."
-              },
-              "attribute_name": {
-                "anyOf": [
-                  {
-                    "type": "string",
-                    "minLength": 1
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "description": "The attribute to read when source = \"attribute\" (e.g. \"content\", \"data-price\"). NULL for source \"text\"/\"json\". When source = \"attribute\" this MUST be non-null — enforced downstream, not in this structural contract."
-              },
-              "cleanup_regex": {
-                "anyOf": [
-                  {
-                    "type": "string",
-                    "minLength": 1
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "description": "Optional regex to extract/clean the raw value (e.g. pull \"100\" from \"100 ml\", strip \"$\"/thousands separators from a price). NULL when the raw value is already clean. May also lift `ml` out of the title when the site only shows size there."
-              },
-              "extraction_confidence": {
-                "type": "string",
-                "enum": [
-                  "high",
-                  "medium",
-                  "low"
-                ],
-                "description": "How robust this selector is expected to be. \"high\" for a JSON-LD/Offer hit, lower for a brittle CSS/XPath path."
-              }
-            },
-            "required": [
-              "strategy",
-              "selector",
-              "source",
-              "attribute_name",
-              "cleanup_regex",
-              "extraction_confidence"
-            ],
-            "additionalProperties": false,
-            "description": "REQUIRED. How to read availability / stock state."
-          },
-          "currency": {
+          "brand": {
             "anyOf": [
               {
                 "type": "object",
@@ -250,7 +108,7 @@
                   "selector": {
                     "type": "string",
                     "minLength": 1,
-                    "description": "The locator, interpreted per `strategy`: a CSS selector, an XPath expression, or a path into the JSON-LD object (e.g. \"offers.price\"). Non-empty."
+                    "description": "The locator, interpreted per `strategy`: a CSS selector, an XPath expression, or a path into the JSON-LD object (e.g. \"offers.price\", \"offers.0.lowPrice\"). Non-empty."
                   },
                   "source": {
                     "type": "string",
@@ -283,7 +141,7 @@
                         "type": "null"
                       }
                     ],
-                    "description": "Optional regex to extract/clean the raw value (e.g. pull \"100\" from \"100 ml\", strip \"$\"/thousands separators from a price). NULL when the raw value is already clean. May also lift `ml` out of the title when the site only shows size there."
+                    "description": "Optional regex to extract/clean the raw value (e.g. pull \"100\" from \"100 ml\", strip \"$\"/thousands separators from a price). NULL when the raw value is already clean. May also lift `ml` out of the title/URL when the site only shows size there."
                   },
                   "extraction_confidence": {
                     "type": "string",
@@ -309,85 +167,7 @@
                 "type": "null"
               }
             ],
-            "description": "OPTIONAL. How to read the currency. NULL when the site does not expose it — downstream defaults to MXN."
-          },
-          "ml": {
-            "anyOf": [
-              {
-                "type": "object",
-                "properties": {
-                  "strategy": {
-                    "type": "string",
-                    "enum": [
-                      "json-ld",
-                      "css",
-                      "xpath"
-                    ],
-                    "description": "Extraction strategy. Prefer \"json-ld\" when the page ships a <script type=\"application/ld+json\"> Product/Offer block; fall back to \"css\", then \"xpath\"."
-                  },
-                  "selector": {
-                    "type": "string",
-                    "minLength": 1,
-                    "description": "The locator, interpreted per `strategy`: a CSS selector, an XPath expression, or a path into the JSON-LD object (e.g. \"offers.price\"). Non-empty."
-                  },
-                  "source": {
-                    "type": "string",
-                    "enum": [
-                      "text",
-                      "attribute",
-                      "json"
-                    ],
-                    "description": "Where to read the value once located: \"text\" = node text, \"attribute\" = the named attribute (see attribute_name), \"json\" = a value inside a JSON/JSON-LD blob."
-                  },
-                  "attribute_name": {
-                    "anyOf": [
-                      {
-                        "type": "string",
-                        "minLength": 1
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ],
-                    "description": "The attribute to read when source = \"attribute\" (e.g. \"content\", \"data-price\"). NULL for source \"text\"/\"json\". When source = \"attribute\" this MUST be non-null — enforced downstream, not in this structural contract."
-                  },
-                  "cleanup_regex": {
-                    "anyOf": [
-                      {
-                        "type": "string",
-                        "minLength": 1
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ],
-                    "description": "Optional regex to extract/clean the raw value (e.g. pull \"100\" from \"100 ml\", strip \"$\"/thousands separators from a price). NULL when the raw value is already clean. May also lift `ml` out of the title when the site only shows size there."
-                  },
-                  "extraction_confidence": {
-                    "type": "string",
-                    "enum": [
-                      "high",
-                      "medium",
-                      "low"
-                    ],
-                    "description": "How robust this selector is expected to be. \"high\" for a JSON-LD/Offer hit, lower for a brittle CSS/XPath path."
-                  }
-                },
-                "required": [
-                  "strategy",
-                  "selector",
-                  "source",
-                  "attribute_name",
-                  "cleanup_regex",
-                  "extraction_confidence"
-                ],
-                "additionalProperties": false
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "OPTIONAL. How to read the size in ml AS THE SITE SHOWS IT (often lifted from the title via cleanup_regex). NULL when not exposed. A3 does NOT normalize decant vs full-bottle — that is A4/A5."
+            "description": "OPTIONAL. How to read the brand. Shopify exposes a top-level JSON-LD \"brand\"; WooCommerce typically does not — NULL when the site does not expose it."
           },
           "sku": {
             "anyOf": [
@@ -406,7 +186,7 @@
                   "selector": {
                     "type": "string",
                     "minLength": 1,
-                    "description": "The locator, interpreted per `strategy`: a CSS selector, an XPath expression, or a path into the JSON-LD object (e.g. \"offers.price\"). Non-empty."
+                    "description": "The locator, interpreted per `strategy`: a CSS selector, an XPath expression, or a path into the JSON-LD object (e.g. \"offers.price\", \"offers.0.lowPrice\"). Non-empty."
                   },
                   "source": {
                     "type": "string",
@@ -439,7 +219,7 @@
                         "type": "null"
                       }
                     ],
-                    "description": "Optional regex to extract/clean the raw value (e.g. pull \"100\" from \"100 ml\", strip \"$\"/thousands separators from a price). NULL when the raw value is already clean. May also lift `ml` out of the title when the site only shows size there."
+                    "description": "Optional regex to extract/clean the raw value (e.g. pull \"100\" from \"100 ml\", strip \"$\"/thousands separators from a price). NULL when the raw value is already clean. May also lift `ml` out of the title/URL when the site only shows size there."
                   },
                   "extraction_confidence": {
                     "type": "string",
@@ -465,19 +245,488 @@
                 "type": "null"
               }
             ],
-            "description": "OPTIONAL. How to read the SKU / product code. NULL when the site does not expose one."
+            "description": "OPTIONAL. How to read the SKU / product code. WooCommerce exposes a JSON-LD \"sku\"; Shopify often leaves it null. NULL when the site exposes none."
+          },
+          "currency": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "strategy": {
+                    "type": "string",
+                    "enum": [
+                      "json-ld",
+                      "css",
+                      "xpath"
+                    ],
+                    "description": "Extraction strategy. Prefer \"json-ld\" when the page ships a <script type=\"application/ld+json\"> Product/Offer block; fall back to \"css\", then \"xpath\"."
+                  },
+                  "selector": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "The locator, interpreted per `strategy`: a CSS selector, an XPath expression, or a path into the JSON-LD object (e.g. \"offers.price\", \"offers.0.lowPrice\"). Non-empty."
+                  },
+                  "source": {
+                    "type": "string",
+                    "enum": [
+                      "text",
+                      "attribute",
+                      "json"
+                    ],
+                    "description": "Where to read the value once located: \"text\" = node text, \"attribute\" = the named attribute (see attribute_name), \"json\" = a value inside a JSON/JSON-LD blob."
+                  },
+                  "attribute_name": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "The attribute to read when source = \"attribute\" (e.g. \"content\", \"data-price\"). NULL for source \"text\"/\"json\". When source = \"attribute\" this MUST be non-null — enforced downstream, not in this structural contract."
+                  },
+                  "cleanup_regex": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "Optional regex to extract/clean the raw value (e.g. pull \"100\" from \"100 ml\", strip \"$\"/thousands separators from a price). NULL when the raw value is already clean. May also lift `ml` out of the title/URL when the site only shows size there."
+                  },
+                  "extraction_confidence": {
+                    "type": "string",
+                    "enum": [
+                      "high",
+                      "medium",
+                      "low"
+                    ],
+                    "description": "How robust this selector is expected to be. \"high\" for a JSON-LD/Offer hit, lower for a brittle CSS/XPath path."
+                  }
+                },
+                "required": [
+                  "strategy",
+                  "selector",
+                  "source",
+                  "attribute_name",
+                  "cleanup_regex",
+                  "extraction_confidence"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "OPTIONAL. How to read the ISO currency, usually on the offer node (Offer/AggregateOffer \"priceCurrency\"). NULL when not exposed — downstream defaults to MXN."
+          },
+          "variants": {
+            "type": "object",
+            "properties": {
+              "mode": {
+                "type": "string",
+                "enum": [
+                  "per-offer",
+                  "aggregate-range"
+                ],
+                "description": "How this storefront exposes per-size pricing in its Product JSON-LD. \"per-offer\" when `offers` is an ARRAY of Offer objects each carrying its own `price` (Shopify: one Offer per ml size). \"aggregate-range\" when `offers` is a single AggregateOffer with `lowPrice`/`highPrice` and no per-size price (WooCommerce). This drives the semantics of `container` and `price_high`."
+              },
+              "container": {
+                "type": "object",
+                "properties": {
+                  "strategy": {
+                    "type": "string",
+                    "enum": [
+                      "json-ld",
+                      "css",
+                      "xpath"
+                    ],
+                    "description": "Extraction strategy. Prefer \"json-ld\" when the page ships a <script type=\"application/ld+json\"> Product/Offer block; fall back to \"css\", then \"xpath\"."
+                  },
+                  "selector": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "The locator, interpreted per `strategy`: a CSS selector, an XPath expression, or a path into the JSON-LD object (e.g. \"offers.price\", \"offers.0.lowPrice\"). Non-empty."
+                  },
+                  "source": {
+                    "type": "string",
+                    "enum": [
+                      "text",
+                      "attribute",
+                      "json"
+                    ],
+                    "description": "Where to read the value once located: \"text\" = node text, \"attribute\" = the named attribute (see attribute_name), \"json\" = a value inside a JSON/JSON-LD blob."
+                  },
+                  "attribute_name": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "The attribute to read when source = \"attribute\" (e.g. \"content\", \"data-price\"). NULL for source \"text\"/\"json\". When source = \"attribute\" this MUST be non-null — enforced downstream, not in this structural contract."
+                  },
+                  "cleanup_regex": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "Optional regex to extract/clean the raw value (e.g. pull \"100\" from \"100 ml\", strip \"$\"/thousands separators from a price). NULL when the raw value is already clean. May also lift `ml` out of the title/URL when the site only shows size there."
+                  },
+                  "extraction_confidence": {
+                    "type": "string",
+                    "enum": [
+                      "high",
+                      "medium",
+                      "low"
+                    ],
+                    "description": "How robust this selector is expected to be. \"high\" for a JSON-LD/Offer hit, lower for a brittle CSS/XPath path."
+                  }
+                },
+                "required": [
+                  "strategy",
+                  "selector",
+                  "source",
+                  "attribute_name",
+                  "cleanup_regex",
+                  "extraction_confidence"
+                ],
+                "additionalProperties": false,
+                "description": "REQUIRED. Locator for the offers node, with DOUBLE SEMANTICS per `mode`: in \"per-offer\" it points at the ITERABLE ARRAY of Offer objects (e.g. JSON-LD path \"offers\") that A4 loops over, one product variant per element; in \"aggregate-range\" it points at the SINGLE AggregateOffer OBJECT (e.g. \"offers.0\") that A4 reads once."
+              },
+              "ml": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "strategy": {
+                        "type": "string",
+                        "enum": [
+                          "json-ld",
+                          "css",
+                          "xpath"
+                        ],
+                        "description": "Extraction strategy. Prefer \"json-ld\" when the page ships a <script type=\"application/ld+json\"> Product/Offer block; fall back to \"css\", then \"xpath\"."
+                      },
+                      "selector": {
+                        "type": "string",
+                        "minLength": 1,
+                        "description": "The locator, interpreted per `strategy`: a CSS selector, an XPath expression, or a path into the JSON-LD object (e.g. \"offers.price\", \"offers.0.lowPrice\"). Non-empty."
+                      },
+                      "source": {
+                        "type": "string",
+                        "enum": [
+                          "text",
+                          "attribute",
+                          "json"
+                        ],
+                        "description": "Where to read the value once located: \"text\" = node text, \"attribute\" = the named attribute (see attribute_name), \"json\" = a value inside a JSON/JSON-LD blob."
+                      },
+                      "attribute_name": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ],
+                        "description": "The attribute to read when source = \"attribute\" (e.g. \"content\", \"data-price\"). NULL for source \"text\"/\"json\". When source = \"attribute\" this MUST be non-null — enforced downstream, not in this structural contract."
+                      },
+                      "cleanup_regex": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ],
+                        "description": "Optional regex to extract/clean the raw value (e.g. pull \"100\" from \"100 ml\", strip \"$\"/thousands separators from a price). NULL when the raw value is already clean. May also lift `ml` out of the title/URL when the site only shows size there."
+                      },
+                      "extraction_confidence": {
+                        "type": "string",
+                        "enum": [
+                          "high",
+                          "medium",
+                          "low"
+                        ],
+                        "description": "How robust this selector is expected to be. \"high\" for a JSON-LD/Offer hit, lower for a brittle CSS/XPath path."
+                      }
+                    },
+                    "required": [
+                      "strategy",
+                      "selector",
+                      "source",
+                      "attribute_name",
+                      "cleanup_regex",
+                      "extraction_confidence"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "OPTIONAL. How to read the size in ml PER VARIANT, as the site shows it. The size is frequently NOT a JSON-LD field but lives in the variant title or URL, so this is typically a \"css\"/\"text\" (or \"json\" on the variant url) selector with a `cleanup_regex` like \"(\\\\d+)\\\\s*ml\" to lift the number. NULL when the site exposes no per-variant size. A3 does NOT normalize decant vs full-bottle — that is A4/A5."
+              },
+              "price": {
+                "type": "object",
+                "properties": {
+                  "strategy": {
+                    "type": "string",
+                    "enum": [
+                      "json-ld",
+                      "css",
+                      "xpath"
+                    ],
+                    "description": "Extraction strategy. Prefer \"json-ld\" when the page ships a <script type=\"application/ld+json\"> Product/Offer block; fall back to \"css\", then \"xpath\"."
+                  },
+                  "selector": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "The locator, interpreted per `strategy`: a CSS selector, an XPath expression, or a path into the JSON-LD object (e.g. \"offers.price\", \"offers.0.lowPrice\"). Non-empty."
+                  },
+                  "source": {
+                    "type": "string",
+                    "enum": [
+                      "text",
+                      "attribute",
+                      "json"
+                    ],
+                    "description": "Where to read the value once located: \"text\" = node text, \"attribute\" = the named attribute (see attribute_name), \"json\" = a value inside a JSON/JSON-LD blob."
+                  },
+                  "attribute_name": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "The attribute to read when source = \"attribute\" (e.g. \"content\", \"data-price\"). NULL for source \"text\"/\"json\". When source = \"attribute\" this MUST be non-null — enforced downstream, not in this structural contract."
+                  },
+                  "cleanup_regex": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "Optional regex to extract/clean the raw value (e.g. pull \"100\" from \"100 ml\", strip \"$\"/thousands separators from a price). NULL when the raw value is already clean. May also lift `ml` out of the title/URL when the site only shows size there."
+                  },
+                  "extraction_confidence": {
+                    "type": "string",
+                    "enum": [
+                      "high",
+                      "medium",
+                      "low"
+                    ],
+                    "description": "How robust this selector is expected to be. \"high\" for a JSON-LD/Offer hit, lower for a brittle CSS/XPath path."
+                  }
+                },
+                "required": [
+                  "strategy",
+                  "selector",
+                  "source",
+                  "attribute_name",
+                  "cleanup_regex",
+                  "extraction_confidence"
+                ],
+                "additionalProperties": false,
+                "description": "REQUIRED. The price to read off the offers node: in \"per-offer\" the `price` of EACH Offer element (relative to `container`, e.g. \"price\"); in \"aggregate-range\" the AggregateOffer `lowPrice`. Mandatory for an active recipe."
+              },
+              "price_high": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "strategy": {
+                        "type": "string",
+                        "enum": [
+                          "json-ld",
+                          "css",
+                          "xpath"
+                        ],
+                        "description": "Extraction strategy. Prefer \"json-ld\" when the page ships a <script type=\"application/ld+json\"> Product/Offer block; fall back to \"css\", then \"xpath\"."
+                      },
+                      "selector": {
+                        "type": "string",
+                        "minLength": 1,
+                        "description": "The locator, interpreted per `strategy`: a CSS selector, an XPath expression, or a path into the JSON-LD object (e.g. \"offers.price\", \"offers.0.lowPrice\"). Non-empty."
+                      },
+                      "source": {
+                        "type": "string",
+                        "enum": [
+                          "text",
+                          "attribute",
+                          "json"
+                        ],
+                        "description": "Where to read the value once located: \"text\" = node text, \"attribute\" = the named attribute (see attribute_name), \"json\" = a value inside a JSON/JSON-LD blob."
+                      },
+                      "attribute_name": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ],
+                        "description": "The attribute to read when source = \"attribute\" (e.g. \"content\", \"data-price\"). NULL for source \"text\"/\"json\". When source = \"attribute\" this MUST be non-null — enforced downstream, not in this structural contract."
+                      },
+                      "cleanup_regex": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ],
+                        "description": "Optional regex to extract/clean the raw value (e.g. pull \"100\" from \"100 ml\", strip \"$\"/thousands separators from a price). NULL when the raw value is already clean. May also lift `ml` out of the title/URL when the site only shows size there."
+                      },
+                      "extraction_confidence": {
+                        "type": "string",
+                        "enum": [
+                          "high",
+                          "medium",
+                          "low"
+                        ],
+                        "description": "How robust this selector is expected to be. \"high\" for a JSON-LD/Offer hit, lower for a brittle CSS/XPath path."
+                      }
+                    },
+                    "required": [
+                      "strategy",
+                      "selector",
+                      "source",
+                      "attribute_name",
+                      "cleanup_regex",
+                      "extraction_confidence"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "The AggregateOffer `highPrice` (top of the price range) — ONLY for mode \"aggregate-range\". MUST be NULL for \"per-offer\", where each Offer has a single exact price; a non-null price_high in per-offer is a malformed recipe and is failed downstream."
+              },
+              "availability": {
+                "type": "object",
+                "properties": {
+                  "strategy": {
+                    "type": "string",
+                    "enum": [
+                      "json-ld",
+                      "css",
+                      "xpath"
+                    ],
+                    "description": "Extraction strategy. Prefer \"json-ld\" when the page ships a <script type=\"application/ld+json\"> Product/Offer block; fall back to \"css\", then \"xpath\"."
+                  },
+                  "selector": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "The locator, interpreted per `strategy`: a CSS selector, an XPath expression, or a path into the JSON-LD object (e.g. \"offers.price\", \"offers.0.lowPrice\"). Non-empty."
+                  },
+                  "source": {
+                    "type": "string",
+                    "enum": [
+                      "text",
+                      "attribute",
+                      "json"
+                    ],
+                    "description": "Where to read the value once located: \"text\" = node text, \"attribute\" = the named attribute (see attribute_name), \"json\" = a value inside a JSON/JSON-LD blob."
+                  },
+                  "attribute_name": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "The attribute to read when source = \"attribute\" (e.g. \"content\", \"data-price\"). NULL for source \"text\"/\"json\". When source = \"attribute\" this MUST be non-null — enforced downstream, not in this structural contract."
+                  },
+                  "cleanup_regex": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "Optional regex to extract/clean the raw value (e.g. pull \"100\" from \"100 ml\", strip \"$\"/thousands separators from a price). NULL when the raw value is already clean. May also lift `ml` out of the title/URL when the site only shows size there."
+                  },
+                  "extraction_confidence": {
+                    "type": "string",
+                    "enum": [
+                      "high",
+                      "medium",
+                      "low"
+                    ],
+                    "description": "How robust this selector is expected to be. \"high\" for a JSON-LD/Offer hit, lower for a brittle CSS/XPath path."
+                  }
+                },
+                "required": [
+                  "strategy",
+                  "selector",
+                  "source",
+                  "attribute_name",
+                  "cleanup_regex",
+                  "extraction_confidence"
+                ],
+                "additionalProperties": false,
+                "description": "REQUIRED. How to read stock state PER VARIANT (per-offer) or for the aggregate (aggregate-range). schema.org availability appears as BOTH \"http://schema.org/...\" AND \"https://schema.org/...\" across these storefronts, so the cleanup_regex should match either scheme, e.g. \"https?://schema\\\\.org/(InStock|OutOfStock)\"."
+              }
+            },
+            "required": [
+              "mode",
+              "container",
+              "ml",
+              "price",
+              "price_high",
+              "availability"
+            ],
+            "additionalProperties": false,
+            "description": "The variant/size dimension of the product (the ml axis of the decants business): how to read N sizes with N prices/stocks. Its shape is driven by `mode`. container/price/availability are mandatory for an active recipe; ml is null when no per-variant size is exposed; price_high is non-null ONLY in \"aggregate-range\"."
           }
         },
         "required": [
           "title",
-          "price",
-          "stock",
+          "brand",
+          "sku",
           "currency",
-          "ml",
-          "sku"
+          "variants"
         ],
         "additionalProperties": false,
-        "description": "The six field selectors. title/price/stock are mandatory; currency/ml/sku are null when the site does not expose them. Mirrors agent.site_recipes.selectors (jsonb)."
+        "description": "The product-level selectors plus the `variants` dimension. title + variants{container,price,availability} are mandatory; brand/sku/currency and variants.ml/price_high are null when not exposed/not applicable. Mirrors agent.site_recipes.selectors (jsonb)."
       },
       "recipe_status": {
         "type": "string",
@@ -486,7 +735,7 @@
           "stale",
           "failed"
         ],
-        "description": "Lifecycle status. A3 emits \"active\" (all three mandatory fields resolved well) or \"failed\" (no usable recipe could be built); \"stale\" is set later by A4 when a working recipe drifts. Mirrors the agent.site_recipes CHECK. A recipe is \"active\" ONLY if title, price and stock are present and well-formed — never \"active\" with gaps (consistency enforced downstream)."
+        "description": "Lifecycle status. A3 emits \"active\" (title + variants{container,price,availability} resolved well) or \"failed\" (no usable recipe could be built); \"stale\" is set later by A4 when a working recipe drifts. Mirrors the agent.site_recipes CHECK. A recipe is \"active\" ONLY if those mandatory selectors are present and well-formed and the price_high↔mode rule holds — never \"active\" with gaps (consistency enforced downstream)."
       }
     },
     "required": [
